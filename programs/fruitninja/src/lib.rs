@@ -14,7 +14,7 @@ use ephemeral_rollups_sdk::ephem::{
     commit_and_undelegate_accounts,
 };
 
-declare_id!("8LJqbPMhiDLp4vbzdfR7wHwY6VoYajzRkqafK9TS2HNB");
+declare_id!("HmKzGZB8DWJCjqgkghdwu8tk3k9oKBNyc1T8t6oBzGZY");
 
 #[ephemeral]
 #[program]
