@@ -319,6 +319,122 @@ pub mod fruitninja {
     }
 }
 
+/// Get complete session data for a player
+    pub fn get_session(ctx: Context<GetSession>) -> Result<SessionData> {
+        let session = &ctx.accounts.session;
+        Ok(SessionData {
+            player: session.player,
+            current_score: session.current_score,
+            combo: session.combo,
+            lives: session.lives,
+            is_active: session.is_active,
+            started_at: session.started_at,
+            ended_at: session.ended_at,
+            fruits_sliced: session.fruits_sliced,
+            max_combo: session.max_combo,
+        })
+    }
+
+    /// Get player profile data
+    pub fn get_profile(ctx: Context<GetProfile>) -> Result<ProfileData> {
+        let profile = &ctx.accounts.player_profile;
+        Ok(ProfileData {
+            owner: profile.owner,
+            username: profile.username.clone(),
+            high_score: profile.high_score,
+            total_games: profile.total_games,
+            total_fruits_sliced: profile.total_fruits_sliced,
+        })
+    }
+
+    /// Get game configuration
+    pub fn get_config(ctx: Context<GetConfig>) -> Result<ConfigData> {
+        let config = &ctx.accounts.config;
+        Ok(ConfigData {
+            admin: config.admin,
+            max_lives: config.max_lives,
+            max_points_per_fruit: config.max_points_per_fruit,
+            combo_multiplier_base: config.combo_multiplier_base,
+            leaderboard_capacity: config.leaderboard_capacity,
+        })
+    }
+
+    /// Get full leaderboard
+    pub fn get_leaderboard(ctx: Context<GetLeaderboard>) -> Result<Vec<LeaderboardEntry>> {
+        let config = &ctx.accounts.config;
+        Ok(config.leaderboard.clone())
+    }
+
+    /// Get leaderboard entry at specific rank (0-indexed)
+    pub fn get_leaderboard_entry(
+        ctx: Context<GetLeaderboard>,
+        rank: u8,
+    ) -> Result<Option<LeaderboardEntry>> {
+        let config = &ctx.accounts.config;
+        let idx = rank as usize;
+        if idx < config.leaderboard.len() {
+            Ok(Some(config.leaderboard[idx].clone()))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Get player's rank on leaderboard (returns None if not on leaderboard)
+    pub fn get_player_rank(
+        ctx: Context<GetLeaderboard>,
+        player: Pubkey,
+    ) -> Result<Option<u8>> {
+        let config = &ctx.accounts.config;
+        for (idx, entry) in config.leaderboard.iter().enumerate() {
+            if entry.player == player {
+                return Ok(Some(idx as u8));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Get session statistics (score, combo, fruits sliced)
+    pub fn get_session_stats(ctx: Context<GetSession>) -> Result<SessionStats> {
+        let session = &ctx.accounts.session;
+        Ok(SessionStats {
+            current_score: session.current_score,
+            combo: session.combo,
+            max_combo: session.max_combo,
+            fruits_sliced: session.fruits_sliced,
+            lives: session.lives,
+        })
+    }
+
+    /// Check if session is active
+    pub fn is_session_active(ctx: Context<GetSession>) -> Result<bool> {
+        Ok(ctx.accounts.session.is_active)
+    }
+
+    /// Get session duration (in seconds)
+    pub fn get_session_duration(ctx: Context<GetSession>) -> Result<i64> {
+        let session = &ctx.accounts.session;
+        let clock = Clock::get()?;
+        let end_time = session.ended_at.unwrap_or(clock.unix_timestamp);
+        Ok(end_time - session.started_at)
+    }
+
+    /// Calculate potential points for a fruit slice with current combo
+    pub fn calculate_slice_points(
+        ctx: Context<CalculatePoints>,
+        base_points: u64,
+    ) -> Result<u64> {
+        let session = &ctx.accounts.session;
+        let config = &ctx.accounts.config;
+        
+        require!(base_points > 0 && base_points <= config.max_points_per_fruit, ErrorCode::InvalidPoints);
+        
+        let combo_multiplier = config.combo_multiplier_base.saturating_add(session.combo as u64);
+        let earned_points = base_points.saturating_mul(combo_multiplier).saturating_div(10);
+        
+        Ok(earned_points)
+    }
+
+
 // =================== Constants & Helpers ===================
 
 pub const SESSION_SEED: &[u8] = b"session";
@@ -409,7 +525,23 @@ pub struct LeaderboardEntry {
 }
 
 // =================== Account Contexts ===================
+#[derive(Accounts)]
+pub struct GetProfile<'info> {
+    #[account(
+        seeds = [PROFILE_SEED, player_profile.owner.as_ref()],
+        bump = player_profile.bump
+    )]
+    pub player_profile: Account<'info, PlayerProfile>,
+}
 
+#[derive(Accounts)]
+pub struct GetConfig<'info> {
+    #[account(
+        seeds = [CONFIG_SEED],
+        bump = config.bump
+    )]
+    pub config: Account<'info, GameConfig>,
+}
 #[derive(Accounts)]
 pub struct InitializeSession<'info> {
     #[account(
@@ -480,6 +612,20 @@ pub struct LoseLife<'info> {
     pub session: Account<'info, GameSession>,
 }
 
+/// Complete session data returned by get_session
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct SessionData {
+    pub player: Pubkey,              // 32
+    pub current_score: u64,          // 8
+    pub combo: u8,                   // 1
+    pub lives: u8,                   // 1
+    pub is_active: bool,             // 1
+    pub started_at: i64,             // 8
+    pub ended_at: Option<i64>,       // 9
+    pub fruits_sliced: u64,          // 8
+    pub max_combo: u8,               // 1
+}
+
 #[derive(Accounts)]
 pub struct EndSession<'info> {
     #[account(
@@ -507,6 +653,40 @@ pub struct EndSession<'info> {
 
     pub player: Signer<'info>,
 }
+
+#[derive(Accounts)]
+pub struct GetSession<'info> {
+    #[account(
+        seeds = [SESSION_SEED, session.player.as_ref()],
+        bump = session.bump
+    )]
+    pub session: Account<'info, GameSession>,
+}
+
+#[derive(Accounts)]
+pub struct GetLeaderboard<'info> {
+    #[account(
+        seeds = [CONFIG_SEED],
+        bump = config.bump
+    )]
+    pub config: Account<'info, GameConfig>,
+}
+
+#[derive(Accounts)]
+pub struct CalculatePoints<'info> {
+    #[account(
+        seeds = [SESSION_SEED, session.player.as_ref()],
+        bump = session.bump
+    )]
+    pub session: Account<'info, GameSession>,
+
+    #[account(
+        seeds = [CONFIG_SEED],
+        bump = config.bump
+    )]
+    pub config: Account<'info, GameConfig>,
+}
+
 
 #[delegate]
 #[derive(Accounts)]
@@ -618,6 +798,35 @@ pub struct UpdateConfig<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
 }
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct ProfileData {
+    pub owner: Pubkey,                  // 32
+    pub username: Option<String>,       // 37 (1 + 4 + 32)
+    pub high_score: u64,                // 8
+    pub total_games: u64,               // 8
+    pub total_fruits_sliced: u64,       // 8
+}
+
+/// Game configuration data returned by get_config
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct ConfigData {
+    pub admin: Pubkey,                  // 32
+    pub max_lives: u8,                  // 1
+    pub max_points_per_fruit: u64,      // 8
+    pub combo_multiplier_base: u64,     // 8
+    pub leaderboard_capacity: u8,       // 1
+}
+
+/// Focused session statistics returned by get_session_stats
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct SessionStats {
+    pub current_score: u64,             // 8
+    pub combo: u8,                      // 1
+    pub max_combo: u8,                  // 1
+    pub fruits_sliced: u64,             // 8
+    pub lives: u8,                      // 1
+}
+
 
 // =================== Errors & Events ===================
 
@@ -675,3 +884,4 @@ pub struct GameOver {
     pub fruits_sliced: u64,
     pub duration: i64,
 }
+
