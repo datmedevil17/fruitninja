@@ -14,7 +14,7 @@ export default function GameStartOverlay({ onStartGame }: GameStartOverlayProps)
         </h2>
         <div className="text-gray-600 mb-6 space-y-3">
           <p className="font-medium">🎯 Slice fruits by dragging across them!</p>
-          <p className="font-medium">❤️ Don't let fruits fall off the screen!</p>
+          <p className="font-medium">❤️ Don&apos;t let fruits fall off the screen!</p>
           
           <div className="bg-gray-50 rounded-2xl p-4 mt-4 border border-gray-200">
             <div className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wider">Powerups</div>

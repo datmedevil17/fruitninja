@@ -85,7 +85,7 @@ export default function Home() {
                 <div className="flex items-start gap-3">
                   <span className="text-2xl">❤️</span>
                   <div>
-                    <h4 className="font-bold text-gray-800">Don't Miss</h4>
+                    <h4 className="font-bold text-gray-800">Don&apos;t Miss</h4>
                     <p className="text-gray-600">Lose a life when fruits fall off the screen</p>
                   </div>
                 </div>

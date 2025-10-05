@@ -121,6 +121,22 @@ export default function FruitNinja() {
     setPowerups(prev => [...prev, newPowerup]);
   }, [canvasSize]);
 
+  const createParticles = useCallback((x: number, y: number, color: string) => {
+    const newParticles: Particle[] = [];
+    for (let i = 0; i < 12; i++) {
+      newParticles.push({
+        x,
+        y,
+        vx: (Math.random() - 0.5) * 8,
+        vy: (Math.random() - 0.5) * 8,
+        life: 1,
+        maxLife: Math.random() * 25 + 15,
+        color,
+      });
+    }
+    setParticles(prev => [...prev, ...newParticles]);
+  }, []);
+
   const activatePowerup = useCallback((type: string) => {
     const now = Date.now();
     let duration = 5000; // 5 seconds default
@@ -153,23 +169,7 @@ export default function FruitNinja() {
       const filtered = prev.filter(p => p.type !== type);
       return [...filtered, { type, endTime: now + duration }];
     });
-  }, [multiplier]);
-
-  const createParticles = useCallback((x: number, y: number, color: string) => {
-    const newParticles: Particle[] = [];
-    for (let i = 0; i < 12; i++) {
-      newParticles.push({
-        x,
-        y,
-        vx: (Math.random() - 0.5) * 8,
-        vy: (Math.random() - 0.5) * 8,
-        life: 1,
-        maxLife: Math.random() * 25 + 15,
-        color,
-      });
-    }
-    setParticles(prev => [...prev, ...newParticles]);
-  }, []);
+  }, [multiplier, createParticles]);
 
   const checkSlice = useCallback((mouseX: number, mouseY: number, prevX: number, prevY: number) => {
     const doubleActive = activePowerups.find(p => p.type === 'double');
