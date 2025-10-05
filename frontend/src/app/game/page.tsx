@@ -334,12 +334,51 @@ export default function FruitNinja() {
     setMultiplier(1);
   }, []);
 
+  // Add this function to your game page component
+  const saveScore = useCallback((finalScore: number) => {
+    try {
+      const scoreEntry = {
+        id: Date.now(),
+        score: finalScore,
+        date: new Date().toISOString().split('T')[0],
+        rank: getRankFromScore(finalScore)
+      };
+      
+      const existingScores = JSON.parse(localStorage.getItem('fruitNinjaScores') || '[]');
+      const updatedScores = [scoreEntry, ...existingScores].slice(0, 10); // Keep top 10
+      
+      localStorage.setItem('fruitNinjaScores', JSON.stringify(updatedScores));
+      localStorage.setItem('fruitNinjaBestScore', finalScore.toString());
+    } catch (error) {
+      console.error('Error saving score:', error);
+    }
+  }, []);
+
+  const getRankFromScore = (score: number) => {
+    if (score >= 1000) return "🏆 NINJA MASTER";
+    if (score >= 500) return "⚔️ FRUIT WARRIOR";
+    if (score >= 300) return "🎯 SHARP SHOOTER";
+    if (score >= 200) return "👍 GETTING BETTER";
+    if (score >= 100) return "💪 KEEP PRACTICING";
+    return "🎯 TRY AGAIN";
+  };
+
   // Update best score when game ends
   useEffect(() => {
     if (gameOver && score > bestScore) {
       setBestScore(score);
     }
   }, [gameOver, score, bestScore]);
+
+  // Update your game over effect to save the score
+  useEffect(() => {
+    if (gameOver && score > 0) {
+      saveScore(score);
+      if (score > bestScore) {
+        setBestScore(score);
+      }
+    }
+  }, [gameOver, score, bestScore, saveScore]);
 
   const gameLoop = useCallback(() => {
     if (!gameStarted || gameOver) return;
