@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-fruitninja = "HmKzGZB8DWJCjqgkghdwu8tk3k9oKBNyc1T8t6oBzGZY"
+fruitninja = "2yTboNmZbPJJey7Cf3mUyW1AyUc2m4rdWiCGg8qKMQq4"
 
 [registry]
 url = "https://api.apr.dev"

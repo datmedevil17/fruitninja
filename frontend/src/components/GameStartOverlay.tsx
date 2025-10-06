@@ -1,10 +1,8 @@
 import React from 'react';
 
-interface GameStartOverlayProps {
-  onStartGame: () => void;
-}
+import { GameStartOverlayProps } from '@/types/game';
 
-export default function GameStartOverlay({ onStartGame }: GameStartOverlayProps) {
+export default function GameStartOverlay({ onStartGame, isProcessing = false }: GameStartOverlayProps) {
   return (
     <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center rounded-2xl">
       <div className="text-center p-6 bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl border border-gray-300 max-w-md mx-4">
@@ -41,9 +39,17 @@ export default function GameStartOverlay({ onStartGame }: GameStartOverlayProps)
         
         <button
           onClick={onStartGame}
-          className="bg-gray-800 hover:bg-gray-900 text-white font-bold py-4 px-8 rounded-2xl text-lg transition-all duration-300 transform hover:scale-105 hover:shadow-lg active:scale-95"
+          disabled={isProcessing}
+          className="bg-gray-800 hover:bg-gray-900 text-white font-bold py-4 px-8 rounded-2xl text-lg transition-all duration-300 transform hover:scale-105 hover:shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
         >
-          🚀 Start Slicing!
+          {isProcessing ? (
+            <span className="flex items-center gap-2">
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              Starting Game...
+            </span>
+          ) : (
+            '🚀 Start Slicing!'
+          )}
         </button>
       </div>
     </div>

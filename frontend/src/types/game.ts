@@ -34,6 +34,16 @@ export interface Powerup {
   sliceTime?: number;
 }
 
+export interface GameStartOverlayProps {
+  onStartGame: () => void;
+  isProcessing: boolean;
+}
+export interface GameOverOverlayProps {
+  score: number;
+  onPlayAgain: () => void;
+  isProcessing?: boolean;
+}
+
 export interface Particle {
   x: number;
   y: number;

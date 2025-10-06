@@ -1,11 +1,7 @@
 import React from 'react';
 
-interface GameOverOverlayProps {
-  score: number;
-  onPlayAgain: () => void;
-}
-
-export default function GameOverOverlay({ score, onPlayAgain }: GameOverOverlayProps) {
+import { GameOverOverlayProps } from '@/types/game';
+export default function GameOverOverlay({ score, onPlayAgain, isProcessing = false }: GameOverOverlayProps) {
   const getRankMessage = (score: number) => {
     if (score >= 500) return "🏆 NINJA MASTER!";
     if (score >= 300) return "⚔️ FRUIT WARRIOR!";
@@ -34,9 +30,17 @@ export default function GameOverOverlay({ score, onPlayAgain }: GameOverOverlayP
         
         <button
           onClick={onPlayAgain}
-          className="bg-gray-800 hover:bg-gray-900 text-white font-bold py-4 px-8 rounded-2xl text-lg transition-all duration-300 transform hover:scale-105 hover:shadow-lg active:scale-95"
+          disabled={isProcessing}
+          className="bg-gray-800 hover:bg-gray-900 text-white font-bold py-4 px-8 rounded-2xl text-lg transition-all duration-300 transform hover:scale-105 hover:shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
         >
-          🔄 Play Again
+          {isProcessing ? (
+            <span className="flex items-center gap-2">
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              Starting New Game...
+            </span>
+          ) : (
+            '🔄 Play Again'
+          )}
         </button>
       </div>
     </div>

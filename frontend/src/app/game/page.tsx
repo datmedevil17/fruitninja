@@ -1,5 +1,7 @@
 'use client'
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { useWallet } from '@solana/wallet-adapter-react';
 import GameCanvas from '../../components/GameCanvas';
 import GameHeader from '../../components/GameHeader';
 import PowerupsDisplay from '../../components/PowerupsDisplay';
@@ -8,14 +10,16 @@ import GameOverOverlay from '../../components/GameOverOverlay';
 import BackgroundElements from '../../components/BackgroundElements';
 import GameTips from '../../components/GameTips';
 import { Point,Fruit,Powerup,ActivePowerup,Particle,SlashTrail,FRUIT_TYPES,POWERUP_TYPES,GRAVITY } from '@/types/game';
-
-
+import { delegateSession, undelegateSession, sliceFruit as blockchainSliceFruit, loseLife as blockchainLoseLife, endSession as blockchainEndSession, getProvider, fetchGameSession } from '@/services';
+import { BN } from '@coral-xyz/anchor';
 
 export default function FruitNinja() {
+  const router = useRouter();
+  const { publicKey, signTransaction, sendTransaction } = useWallet();
   const containerRef = useRef<HTMLDivElement>(null);
   const animationRef = useRef<number | undefined>(undefined);
   
-  const [canvasSize, setCanvasSize] = useState({ width: 1000, height: 700 }); // Increased size
+  const [canvasSize, setCanvasSize] = useState({ width: 1000, height: 700 });
   const [fruits, setFruits] = useState<Fruit[]>([]);
   const [powerups, setPowerups] = useState<Powerup[]>([]);
   const [particles, setParticles] = useState<Particle[]>([]);
@@ -30,13 +34,49 @@ export default function FruitNinja() {
   const [activePowerups, setActivePowerups] = useState<ActivePowerup[]>([]);
   const [multiplier, setMultiplier] = useState(1);
 
+  // Blockchain states
+  const [isSessionDelegated, setIsSessionDelegated] = useState(false);
+  const [isProcessingBlockchain, setIsProcessingBlockchain] = useState(false);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+
+  // Check wallet connection and redirect if not connected
+  useEffect(() => {
+    if (!publicKey) {
+      router.push('/');
+      return;
+    }
+  }, [publicKey, router]);
+
+  // Fetch initial session state
+  useEffect(() => {
+    const fetchSessionState = async () => {
+      if (!publicKey || !signTransaction || !sendTransaction) return;
+
+      try {
+        const program = getProvider(publicKey, signTransaction, sendTransaction);
+        if (!program) return;
+
+        const session = await fetchGameSession(program, publicKey);
+        if (session && session.isActive) {
+          setScore(session.currentScore?.toNumber() || 0);
+          setLives(session.lives || 5);
+          console.log('Loaded existing session:', session);
+        }
+      } catch (error) {
+        console.error('Error fetching session state:', error);
+      }
+    };
+
+    fetchSessionState();
+  }, [publicKey, signTransaction, sendTransaction]);
+
   // Responsive canvas sizing
   useEffect(() => {
     const updateCanvasSize = () => {
       if (containerRef.current) {
         const containerWidth = containerRef.current.offsetWidth - 48;
-        const maxWidth = Math.min(containerWidth, 1000); // Increased max width
-        const aspectRatio = 10 / 7; // Adjusted aspect ratio for larger canvas
+        const maxWidth = Math.min(containerWidth, 1000);
+        const aspectRatio = 10 / 7;
         const width = maxWidth;
         const height = width / aspectRatio;
         setCanvasSize({ width, height });
@@ -61,16 +101,12 @@ export default function FruitNinja() {
     const fruitType = FRUIT_TYPES[Math.floor(Math.random() * FRUIT_TYPES.length)];
     const size = Math.random() * 15 + 35;
     
-    // Spawn well within canvas bounds considering fruit size
-    const margin = size / 2 + 20; // Extra margin for safety
+    const margin = size / 2 + 20;
     const x = Math.random() * (canvasSize.width - 2 * margin) + margin;
     const y = canvasSize.height + 50;
     
-    // Very limited horizontal velocity to prevent boundary issues
-    const maxHorizontalSpeed = 2; // Much smaller horizontal speed
+    const maxHorizontalSpeed = 2;
     const vx = (Math.random() - 0.5) * maxHorizontalSpeed;
-    
-    // Good vertical velocity for nice arcs
     const vy = -Math.random() * 8 - 10;
     
     const newFruit: Fruit = {
@@ -94,12 +130,10 @@ export default function FruitNinja() {
     const powerupType = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
     const size = 30;
     
-    // Spawn well within canvas bounds
     const margin = size / 2 + 15;
     const x = Math.random() * (canvasSize.width - 2 * margin) + margin;
     const y = canvasSize.height + 50;
     
-    // Minimal horizontal velocity
     const vx = (Math.random() - 0.5) * 1.5;
     const vy = -Math.random() * 6 - 8;
     
@@ -137,9 +171,47 @@ export default function FruitNinja() {
     setParticles(prev => [...prev, ...newParticles]);
   }, []);
 
+  // Blockchain function to slice fruit
+  const handleSliceFruitBlockchain = useCallback(async (points: number) => {
+    if (!publicKey || !signTransaction || !sendTransaction || !isSessionDelegated) return;
+
+    try {
+      setIsProcessingBlockchain(true);
+      const program = getProvider(publicKey, signTransaction, sendTransaction);
+      if (!program) throw new Error('Failed to get program provider');
+
+      await blockchainSliceFruit(program, publicKey, points);
+      console.log(`✅ Sliced fruit on blockchain with ${points} points`);
+    } catch (error) {
+      console.error('Error slicing fruit on blockchain:', error);
+      setSessionError(`Failed to record slice: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsProcessingBlockchain(false);
+    }
+  }, [publicKey, signTransaction, sendTransaction, isSessionDelegated]);
+
+  // Blockchain function to lose life
+  const handleLoseLifeBlockchain = useCallback(async () => {
+    if (!publicKey || !signTransaction || !sendTransaction || !isSessionDelegated) return;
+
+    try {
+      setIsProcessingBlockchain(true);
+      const program = getProvider(publicKey, signTransaction, sendTransaction);
+      if (!program) throw new Error('Failed to get program provider');
+
+      await blockchainLoseLife(program, publicKey);
+      console.log('✅ Lost life on blockchain');
+    } catch (error) {
+      console.error('Error losing life on blockchain:', error);
+      setSessionError(`Failed to record life loss: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsProcessingBlockchain(false);
+    }
+  }, [publicKey, signTransaction, sendTransaction, isSessionDelegated]);
+
   const activatePowerup = useCallback((type: string) => {
     const now = Date.now();
-    let duration = 5000; // 5 seconds default
+    let duration = 5000;
 
     switch (type) {
       case 'slow':
@@ -154,12 +226,15 @@ export default function FruitNinja() {
           if (!fruit.sliced) {
             const fruitType = FRUIT_TYPES.find(f => f.type === fruit.type);
             createParticles(fruit.x, fruit.y, fruitType?.color || '#ff0000');
-            setScore(s => s + 10 * multiplier);
+            const points = 10 * multiplier;
+            setScore(s => s + points);
+            // Call blockchain slice for each fruit
+            handleSliceFruitBlockchain(points);
             return { ...fruit, sliced: true, sliceTime: now };
           }
           return fruit;
         }));
-        return; // Bomb doesn't need duration
+        return;
       case 'freeze':
         duration = 6000;
         break;
@@ -169,12 +244,14 @@ export default function FruitNinja() {
       const filtered = prev.filter(p => p.type !== type);
       return [...filtered, { type, endTime: now + duration }];
     });
-  }, [multiplier, createParticles]);
+  }, [multiplier, createParticles, handleSliceFruitBlockchain]);
 
   const checkSlice = useCallback((mouseX: number, mouseY: number, prevX: number, prevY: number) => {
     const doubleActive = activePowerups.find(p => p.type === 'double');
     const currentMultiplier = doubleActive ? 2 : 1;
     setMultiplier(currentMultiplier);
+
+    let slicedAnyFruit = false;
 
     // Check fruit slicing
     setFruits(prev => prev.map(fruit => {
@@ -192,7 +269,13 @@ export default function FruitNinja() {
         if (closestDistance < fruit.size / 2) {
           const fruitType = FRUIT_TYPES.find(f => f.type === fruit.type);
           createParticles(fruit.x, fruit.y, fruitType?.color || '#ff0000');
-          setScore(s => s + 10 * currentMultiplier);
+          const points = 10 * currentMultiplier;
+          setScore(s => s + points);
+          slicedAnyFruit = true;
+          
+          // Call blockchain slice fruit
+          handleSliceFruitBlockchain(points);
+          
           return { ...fruit, sliced: true, sliceTime: Date.now() };
         }
       }
@@ -220,7 +303,7 @@ export default function FruitNinja() {
       }
       return powerup;
     }));
-  }, [activePowerups, createParticles, activatePowerup]);
+  }, [activePowerups, createParticles, activatePowerup, handleSliceFruitBlockchain]);
 
   const getMousePosition = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = e.currentTarget;
@@ -321,20 +404,80 @@ export default function FruitNinja() {
     setSlashTrails([{ points: [{ x: mouseX, y: mouseY }], timestamp: Date.now() }]);
   }, [gameStarted, gameOver, canvasSize]);
 
-  const startGame = useCallback(() => {
-    setGameStarted(true);
-    setGameOver(false);
-    setScore(0);
-    setLives(5);
-    setFruits([]);
-    setPowerups([]);
-    setParticles([]);
-    setSlashTrails([]);
-    setActivePowerups([]);
-    setMultiplier(1);
-  }, []);
+  // Delegate session when game starts
+  const startGame = useCallback(async () => {
+    if (!publicKey || !signTransaction || !sendTransaction) {
+      alert('Please connect your wallet first');
+      return;
+    }
 
-  // Add this function to your game page component
+    setIsProcessingBlockchain(true);
+    setSessionError(null);
+
+    try {
+      const program = getProvider(publicKey, signTransaction, sendTransaction);
+      if (!program) throw new Error('Failed to get program provider');
+
+      // Delegate session to start the game
+      console.log('Delegating session...');
+      await delegateSession(program, publicKey);
+      setIsSessionDelegated(true);
+      console.log('✅ Session delegated successfully');
+
+      // Start the game
+      setGameStarted(true);
+      setGameOver(false);
+      setScore(0);
+      setLives(5);
+      setFruits([]);
+      setPowerups([]);
+      setParticles([]);
+      setSlashTrails([]);
+      setActivePowerups([]);
+      setMultiplier(1);
+    } catch (error) {
+      console.error('Error delegating session:', error);
+      setSessionError(`Failed to start game: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsProcessingBlockchain(false);
+    }
+  }, [publicKey, signTransaction, sendTransaction]);
+
+  // End game and undelegate session
+  const endGame = useCallback(async () => {
+    if (!publicKey || !signTransaction || !sendTransaction || !isSessionDelegated) return;
+
+    setIsProcessingBlockchain(true);
+    try {
+      const program = getProvider(publicKey, signTransaction, sendTransaction);
+      if (!program) throw new Error('Failed to get program provider');
+
+      console.log('Undelegating session and ending game...');
+      
+      // First undelegate the session
+      // Note: You'll need to provide the actual magicContext and magicProgram PublicKeys
+      // For now, using placeholder - replace with actual values
+      const magicContext = publicKey; // Replace with actual magic context
+      const magicProgram = publicKey;  // Replace with actual magic program
+      
+      await undelegateSession(program, publicKey, magicContext, magicProgram);
+      
+      // Then end the session
+      await blockchainEndSession(program, publicKey);
+      
+      setIsSessionDelegated(false);
+      console.log('✅ Session undelegated and ended successfully');
+      
+      // Redirect back to home
+      router.push('/');
+    } catch (error) {
+      console.error('Error ending game:', error);
+      setSessionError(`Failed to end game: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsProcessingBlockchain(false);
+    }
+  }, [publicKey, signTransaction, sendTransaction, isSessionDelegated, router]);
+
   const saveScore = useCallback((finalScore: number) => {
     try {
       const scoreEntry = {
@@ -345,7 +488,7 @@ export default function FruitNinja() {
       };
       
       const existingScores = JSON.parse(localStorage.getItem('fruitNinjaScores') || '[]');
-      const updatedScores = [scoreEntry, ...existingScores].slice(0, 10); // Keep top 10
+      const updatedScores = [scoreEntry, ...existingScores].slice(0, 10);
       
       localStorage.setItem('fruitNinjaScores', JSON.stringify(updatedScores));
       localStorage.setItem('fruitNinjaBestScore', finalScore.toString());
@@ -377,8 +520,10 @@ export default function FruitNinja() {
       if (score > bestScore) {
         setBestScore(score);
       }
+      // Auto end game after saving score
+      endGame();
     }
-  }, [gameOver, score, bestScore, saveScore]);
+  }, [gameOver, score, bestScore, saveScore, endGame]);
 
   const gameLoop = useCallback(() => {
     if (!gameStarted || gameOver) return;
@@ -401,24 +546,23 @@ export default function FruitNinja() {
         const newX = fruit.x + fruit.vx * timeMultiplier;
         const newRotation = fruit.rotation + fruit.rotationSpeed * timeMultiplier;
 
-        // Strict boundary enforcement - keep fruits within canvas
         let boundedX = newX;
         let boundedVx = fruit.vx;
         
-        // Left boundary check
         if (newX < fruit.size / 2) {
           boundedX = fruit.size / 2;
-          boundedVx = Math.abs(fruit.vx) * 0.8; // Bounce right
+          boundedVx = Math.abs(fruit.vx) * 0.8;
         }
-        // Right boundary check  
         else if (newX > canvasSize.width - fruit.size / 2) {
           boundedX = canvasSize.width - fruit.size / 2;
-          boundedVx = -Math.abs(fruit.vx) * 0.8; // Bounce left
+          boundedVx = -Math.abs(fruit.vx) * 0.8;
         }
 
         if (newY > canvasSize.height + 100) {
           if (!fruit.sliced) {
             setLives(l => l - 1);
+            // Call blockchain lose life
+            handleLoseLifeBlockchain();
           }
           return null;
         }
@@ -448,19 +592,16 @@ export default function FruitNinja() {
         const newX = powerup.x + powerup.vx * timeMultiplier;
         const newRotation = powerup.rotation + powerup.rotationSpeed * timeMultiplier;
 
-        // Strict boundary enforcement for powerups
         let boundedX = newX;
         let boundedVx = powerup.vx;
         
-        // Left boundary check
         if (newX < powerup.size / 2) {
           boundedX = powerup.size / 2;
-          boundedVx = Math.abs(powerup.vx) * 0.8; // Bounce right
+          boundedVx = Math.abs(powerup.vx) * 0.8;
         }
-        // Right boundary check
         else if (newX > canvasSize.width - powerup.size / 2) {
           boundedX = canvasSize.width - powerup.size / 2;
-          boundedVx = -Math.abs(powerup.vx) * 0.8; // Bounce left
+          boundedVx = -Math.abs(powerup.vx) * 0.8;
         }
 
         if (newY > canvasSize.height + 100) {
@@ -496,18 +637,14 @@ export default function FruitNinja() {
     );
 
     // Spawn fruits and powerups
-    if (Math.random() < 0.025) { // Increased spawn rate for more coverage
+    if (Math.random() < 0.025) {
       spawnFruit();
     }
 
-    if (Math.random() < 0.004) { // Slightly increased powerup spawn rate
+    if (Math.random() < 0.004) {
       spawnPowerup();
     }
-  }, [gameStarted, gameOver, spawnFruit, spawnPowerup, getTimeMultiplier, canvasSize]);
-
-  const draw = useCallback(() => {
-    // Drawing logic is now handled in GameCanvas component
-  }, []);
+  }, [gameStarted, gameOver, spawnFruit, spawnPowerup, getTimeMultiplier, canvasSize, handleLoseLifeBlockchain]);
 
   // Game loop
   useEffect(() => {
@@ -549,6 +686,50 @@ export default function FruitNinja() {
           
           <PowerupsDisplay activePowerups={activePowerups} />
 
+          {/* Session Status Display */}
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {isSessionDelegated ? (
+                <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
+                  🟢 Session Active
+                </span>
+              ) : (
+                <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm font-medium">
+                  🟡 Session Inactive
+                </span>
+              )}
+              
+              {isProcessingBlockchain && (
+                <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
+                  🔄 Processing...
+                </span>
+              )}
+            </div>
+
+            {gameStarted && isSessionDelegated && (
+              <button
+                onClick={endGame}
+                disabled={isProcessingBlockchain}
+                className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
+              >
+                {isProcessingBlockchain ? 'Ending...' : 'End Game'}
+              </button>
+            )}
+          </div>
+
+          {/* Error Display */}
+          {sessionError && (
+            <div className="mb-4 bg-red-100 border border-red-300 text-red-800 px-4 py-2 rounded-lg">
+              {sessionError}
+              <button 
+                onClick={() => setSessionError(null)}
+                className="ml-2 text-red-600 hover:text-red-800"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           <div className="mt-6">
             <GameCanvas
               canvasSize={canvasSize}
@@ -568,11 +749,18 @@ export default function FruitNinja() {
             />
 
             {!gameStarted && (
-              <GameStartOverlay onStartGame={startGame} />
+              <GameStartOverlay 
+                onStartGame={startGame} 
+                isProcessing={isProcessingBlockchain}
+              />
             )}
 
             {gameOver && (
-              <GameOverOverlay score={score} onPlayAgain={startGame} />
+              <GameOverOverlay 
+                score={score} 
+                onPlayAgain={startGame}
+                isProcessing={isProcessingBlockchain}
+              />
             )}
           </div>
 
