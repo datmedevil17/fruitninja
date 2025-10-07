@@ -193,7 +193,7 @@ pub mod fruitninja {
         &[SESSION_SEED, session.player.as_ref()],                      // seeds for the session PDA
         DelegateConfig {
             commit_frequency_ms: 30_000,
-            validator: None,
+            validator: Some(pubkey!("MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57")),
         },
 
 
@@ -635,7 +635,7 @@ pub struct DelegateSession<'info> {
     pub session_pda: AccountInfo<'info>,
 
     #[account(
-        seeds = [SESSION_SEED, session.player.as_ref()],
+        seeds = [SESSION_SEED, payer.key().as_ref()],
         bump = session.bump
     )]
     pub session: Account<'info, GameSession>,
@@ -885,4 +885,38 @@ pub struct GameOver {
     pub max_combo: u8,
     pub fruits_sliced: u64,
     pub duration: i64,
+}
+
+
+
+#[account]
+pub struct BufferSession {
+    pub session: Pubkey, // 32 bytes
+    pub bump: u8,        // 1 byte
+    // Add more fields as needed for your buffer session logic
+}
+
+impl BufferSession {
+    pub const LEN: usize = 8 + 32 + 1; // discriminator + session pubkey + bump
+}
+
+#[derive(Accounts)]
+pub struct InitBufferSession<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(
+        init,
+        space = BufferSession::LEN,
+        payer = payer,
+        seeds = [b"buffer", session.key().as_ref()],
+        bump
+    )]
+    pub buffer_session_pda: Account<'info, BufferSession>,
+    pub system_program: Program<'info, System>,
+    pub session: Account<'info, GameSession>,
+}
+
+pub fn init_buffer_session(_ctx: Context<InitBufferSession>) -> Result<()> {
+    // nothing else needed; account is created
+    Ok(())
 }

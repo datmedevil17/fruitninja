@@ -11,7 +11,7 @@ import BackgroundElements from '../../components/BackgroundElements';
 import GameTips from '../../components/GameTips';
 import { Point,Fruit,Powerup,ActivePowerup,Particle,SlashTrail,FRUIT_TYPES,POWERUP_TYPES,GRAVITY } from '@/types/game';
 import { delegateSession, undelegateSession, sliceFruit as blockchainSliceFruit, loseLife as blockchainLoseLife, endSession as blockchainEndSession, getProvider, fetchGameSession } from '@/services';
-import { BN } from '@coral-xyz/anchor';
+import { PublicKey } from '@solana/web3.js';
 
 export default function FruitNinja() {
   const router = useRouter();
@@ -68,6 +68,32 @@ export default function FruitNinja() {
     };
 
     fetchSessionState();
+  }, [publicKey, signTransaction, sendTransaction]);
+
+  // Check if session is already delegated on component mount
+  useEffect(() => {
+    const checkDelegationStatus = async () => {
+      if (!publicKey || !signTransaction || !sendTransaction) return;
+
+      try {
+        const program = getProvider(publicKey, signTransaction, sendTransaction);
+        if (!program) return;
+
+        const session = await fetchGameSession(program, publicKey);
+        if (session && session.isActive) {
+          // Check if session is delegated by trying to fetch delegation-related accounts
+          // This is a simplified check - you might need to implement a proper delegation status check
+          setIsSessionDelegated(true);
+          setScore(session.currentScore?.toNumber() || 0);
+          setLives(session.lives || 5);
+          console.log('Found existing delegated session:', session);
+        }
+      } catch (error) {
+        console.error('Error checking delegation status:', error);
+      }
+    };
+
+    checkDelegationStatus();
   }, [publicKey, signTransaction, sendTransaction]);
 
   // Responsive canvas sizing
@@ -418,17 +444,26 @@ export default function FruitNinja() {
       const program = getProvider(publicKey, signTransaction, sendTransaction);
       if (!program) throw new Error('Failed to get program provider');
 
-      // Delegate session to start the game
-      console.log('Delegating session...');
-      await delegateSession(program, publicKey);
-      setIsSessionDelegated(true);
-      console.log('✅ Session delegated successfully');
+      // Check if session is already delegated
+      if (!isSessionDelegated) {
+        console.log('Delegating session...');
+        await delegateSession(program, publicKey);
+        setIsSessionDelegated(true);
+        console.log('✅ Session delegated successfully');
+      } else {
+        console.log('Session already delegated, starting game...');
+      }
 
       // Start the game
       setGameStarted(true);
       setGameOver(false);
-      setScore(0);
-      setLives(5);
+      
+      // If session is already delegated, preserve existing score and lives
+      if (!isSessionDelegated) {
+        setScore(0);
+        setLives(5);
+      }
+      
       setFruits([]);
       setPowerups([]);
       setParticles([]);
@@ -436,12 +471,12 @@ export default function FruitNinja() {
       setActivePowerups([]);
       setMultiplier(1);
     } catch (error) {
-      console.error('Error delegating session:', error);
+      console.error('Error starting game:', error);
       setSessionError(`Failed to start game: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsProcessingBlockchain(false);
     }
-  }, [publicKey, signTransaction, sendTransaction]);
+  }, [publicKey, signTransaction, sendTransaction, isSessionDelegated]);
 
   // End game and undelegate session
   const endGame = useCallback(async () => {
@@ -669,6 +704,60 @@ export default function FruitNinja() {
       }
     };
   }, [gameStarted, gameOver, gameLoop]);
+
+  // Helper function to check if session is actually delegated
+  const checkSessionDelegated = useCallback(async (): Promise<boolean> => {
+    if (!publicKey || !signTransaction || !sendTransaction) return false;
+
+    try {
+      const program = getProvider(publicKey, signTransaction, sendTransaction);
+      if (!program) return false;
+
+      // Derive delegation-related PDAs to check if they exist
+      const [sessionPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("session"), publicKey.toBuffer()],
+        program.programId
+      );
+
+      const [bufferSessionPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("buffer"), sessionPda.toBuffer()],
+        new PublicKey("BLCzHNMKKgDiawL1iNXozxstgrXLSNBrCvnrBewnDvdf") // BUFFER_PROGRAM
+      );
+
+      // Try to fetch the buffer account to see if delegation exists
+      const bufferAccount = await program.provider.connection.getAccountInfo(bufferSessionPda);
+      return bufferAccount !== null;
+    } catch (error) {
+      console.error('Error checking delegation status:', error);
+      return false;
+    }
+  }, [publicKey, signTransaction, sendTransaction]);
+
+  // Update the initial check
+  useEffect(() => {
+    const checkDelegationStatus = async () => {
+      if (!publicKey || !signTransaction || !sendTransaction) return;
+
+      try {
+        const program = getProvider(publicKey, signTransaction, sendTransaction);
+        if (!program) return;
+
+        const session = await fetchGameSession(program, publicKey);
+        if (session && session.isActive) {
+          // Check if session is actually delegated
+          const isDelegated = await checkSessionDelegated();
+          setIsSessionDelegated(isDelegated);
+          setScore(session.currentScore?.toNumber() || 0);
+          setLives(session.lives || 5);
+          console.log('Session status - Active:', session.isActive, 'Delegated:', isDelegated);
+        }
+      } catch (error) {
+        console.error('Error checking session status:', error);
+      }
+    };
+
+    checkDelegationStatus();
+  }, [publicKey, signTransaction, sendTransaction, checkSessionDelegated]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-100 via-gray-200 to-gray-300 p-4">

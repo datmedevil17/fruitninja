@@ -320,8 +320,7 @@ export type Fruitninja = {
               },
               {
                 "kind": "account",
-                "path": "session.player",
-                "account": "gameSession"
+                "path": "payer"
               }
             ]
           }

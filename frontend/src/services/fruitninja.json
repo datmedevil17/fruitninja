@@ -314,8 +314,7 @@
               },
               {
                 "kind": "account",
-                "path": "session.player",
-                "account": "GameSession"
+                "path": "payer"
               }
             ]
           }

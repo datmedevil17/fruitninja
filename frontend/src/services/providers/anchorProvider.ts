@@ -3,7 +3,6 @@ import { Connection, PublicKey } from "@solana/web3.js";
 import idl from "../fruitninja.json";
 import { getClusterURL } from "@/utils/helpers";
 import type { Fruitninja } from "../fruitninja";
-
 const CLUSTER: string = process.env.NEXT_PUBLIC_CLUSTER || "devnet";
 const RPC_URL: string = getClusterURL(CLUSTER);
 
