@@ -369,26 +369,25 @@ export const loseLife = async (
 /**
  * endSession: wallet-signed finalize (leaderboard logic)
  */
-
 export const undelegateAndEndSession = async (
   program: Program<Fruitninja>,
   playerPublicKey: PublicKey
 ) => {
   if (!program.provider.publicKey) throw new Error("Wallet not connected");
-
+  
   const [sessionPda] = getSessionPda(program.programId, playerPublicKey);
   const [configPda] = getConfigPda(program.programId);
 
   // Fetch current account info
   const sessionInfo = await program.provider.connection.getAccountInfo(sessionPda);
   if (!sessionInfo) throw new Error("Session not initialized");
-
+  
   const delegated = !sessionInfo.owner.equals(program.programId);
 
   // If delegated, undelegate first using PLAYER's wallet
   if (delegated) {
     console.log("Session is delegated. Undelegating with player wallet...");
-
+    
     // Derive magic context (same as before, but we won't sign with it)
     const tempSeed = playerPublicKey.toBytes();
     const tempKeypair = Keypair.fromSeed(tempSeed);
@@ -399,13 +398,13 @@ export const undelegateAndEndSession = async (
     const undelegateTx = await program.methods
       .undelegateSession()
       .accountsPartial({
-        payer: program.provider.publicKey, // PLAYER wallet pays
+        payer: playerPublicKey, // ✅ FIXED: Use playerPublicKey instead of provider.publicKey
         session: sessionPda,
         magicContext,
         magicProgram,
       })
       .rpc({ commitment: "confirmed" });
-
+    
     console.log("✅ Session undelegated (wallet-signed):", undelegateTx);
     
     // Wait a moment for state to settle
@@ -423,7 +422,7 @@ export const undelegateAndEndSession = async (
       session: sessionPda,
       player_profile: playerProfilePda,
       config: configPda,
-      player: program.provider.publicKey,
+      player: playerPublicKey, // ✅ FIXED: Use playerPublicKey instead of provider.publicKey
     })
     .rpc({ commitment: "confirmed" });
 
