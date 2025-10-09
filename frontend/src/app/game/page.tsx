@@ -10,8 +10,74 @@ import GameOverOverlay from '../../components/GameOverOverlay';
 import BackgroundElements from '../../components/BackgroundElements';
 import GameTips from '../../components/GameTips';
 import { Point,Fruit,Powerup,ActivePowerup,Particle,SlashTrail,FRUIT_TYPES,POWERUP_TYPES,GRAVITY } from '@/types/game';
-import { delegateSession, undelegateSession, sliceFruit as blockchainSliceFruit, loseLife as blockchainLoseLife, endSession as blockchainEndSession, getProvider, fetchGameSession } from '@/services';
+import { delegateSession, sliceFruit as blockchainSliceFruit, loseLife as blockchainLoseLife, undelegateAndEndSession as blockchainEndSession, getProvider, fetchGameSession, undelegateSession} from '@/services';
 import { PublicKey } from '@solana/web3.js';
+
+// Add this new component for the score screen
+const ScoreScreen = ({ 
+  score, 
+  onViewScore, 
+  isProcessing 
+}: { 
+  score: number; 
+  onViewScore: () => void; 
+  isProcessing: boolean;
+}) => (
+  <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
+    <div className="bg-white rounded-2xl p-8 text-center max-w-md mx-4 shadow-2xl">
+      <div className="text-6xl mb-4">🎮</div>
+      <h2 className="text-3xl font-bold text-gray-800 mb-2">Game Over!</h2>
+      <p className="text-xl text-gray-600 mb-6">Your Score: <span className="font-bold text-orange-500">{score}</span></p>
+      
+      <button
+        onClick={onViewScore}
+        disabled={isProcessing}
+        className="bg-gradient-to-r from-orange-500 to-red-500 text-white px-8 py-3 rounded-xl font-semibold text-lg shadow-lg hover:from-orange-600 hover:to-red-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {isProcessing ? 'Processing...' : 'View Score'}
+      </button>
+    </div>
+  </div>
+);
+
+// Add this new component for the final score display
+const FinalScoreScreen = ({ 
+  score, 
+  onBackHome, 
+  isProcessing 
+}: { 
+  score: number; 
+  onBackHome: () => void; 
+  isProcessing: boolean;
+}) => {
+  const getRankFromScore = (score: number) => {
+    if (score >= 1000) return "🏆 NINJA MASTER";
+    if (score >= 500) return "⚔️ FRUIT WARRIOR";
+    if (score >= 300) return "🎯 SHARP SHOOTER";
+    if (score >= 200) return "👍 GETTING BETTER";
+    if (score >= 100) return "💪 KEEP PRACTICING";
+    return "🎯 TRY AGAIN";
+  };
+
+  return (
+    <div className="absolute inset-0 bg-black/90 flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl p-10 text-center max-w-lg mx-4 shadow-2xl">
+        <div className="text-8xl mb-6">🏆</div>
+        <h2 className="text-4xl font-bold text-gray-800 mb-4">Final Score</h2>
+        <div className="text-6xl font-bold text-orange-500 mb-4">{score}</div>
+        <div className="text-xl text-gray-600 mb-8">{getRankFromScore(score)}</div>
+        
+        <button
+          onClick={onBackHome}
+          disabled={isProcessing}
+          className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-8 py-3 rounded-xl font-semibold text-lg shadow-lg hover:from-blue-600 hover:to-purple-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed w-full"
+        >
+          {isProcessing ? 'Ending Session...' : 'Back to Home'}
+        </button>
+      </div>
+    </div>
+  );
+};
 
 export default function FruitNinja() {
   const router = useRouter();
@@ -38,6 +104,10 @@ export default function FruitNinja() {
   const [isSessionDelegated, setIsSessionDelegated] = useState(false);
   const [isProcessingBlockchain, setIsProcessingBlockchain] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
+
+  // New states for the score flow
+  const [showScoreScreen, setShowScoreScreen] = useState(false);
+  const [showFinalScore, setShowFinalScore] = useState(false);
 
   // Check wallet connection and redirect if not connected
   useEffect(() => {
@@ -480,16 +550,24 @@ export default function FruitNinja() {
 
   // End game and undelegate session
   const endGame = useCallback(async () => {
-    if (!publicKey || !signTransaction || !sendTransaction || !isSessionDelegated) return;
+    setShowScoreScreen(true);
+  }, []);
+
+  // New function to handle undelegation when viewing score
+  const handleViewScore = useCallback(async () => {
+    if (!publicKey || !signTransaction || !sendTransaction || !isSessionDelegated) {
+      setShowScoreScreen(false);
+      setShowFinalScore(true);
+      return;
+    }
 
     setIsProcessingBlockchain(true);
     try {
       const program = getProvider(publicKey, signTransaction, sendTransaction);
       if (!program) throw new Error('Failed to get program provider');
 
-      console.log('Undelegating session and ending game...');
+      console.log('Undelegating session...');
       
-      // First undelegate the session
       // Note: You'll need to provide the actual magicContext and magicProgram PublicKeys
       // For now, using placeholder - replace with actual values
       const magicContext = publicKey; // Replace with actual magic context
@@ -497,21 +575,49 @@ export default function FruitNinja() {
       
       await undelegateSession(program, publicKey, magicContext, magicProgram);
       
-      // Then end the session
-      await blockchainEndSession(program, publicKey);
-      
       setIsSessionDelegated(false);
-      console.log('✅ Session undelegated and ended successfully');
+      console.log('✅ Session undelegated successfully');
+      
+      setShowScoreScreen(false);
+      setShowFinalScore(true);
+    } catch (error) {
+      console.error('Error undelegating session:', error);
+      setSessionError(`Failed to undelegate session: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Still show final score screen even if undelegation fails
+      setShowScoreScreen(false);
+      setShowFinalScore(true);
+    } finally {
+      setIsProcessingBlockchain(false);
+    }
+  }, [publicKey, signTransaction, sendTransaction, isSessionDelegated]);
+
+  // New function to handle back to home and end session
+  const handleBackHome = useCallback(async () => {
+    if (!publicKey || !signTransaction || !sendTransaction) {
+      router.push('/');
+      return;
+    }
+
+    setIsProcessingBlockchain(true);
+    try {
+      const program = getProvider(publicKey, signTransaction, sendTransaction);
+      if (!program) throw new Error('Failed to get program provider');
+
+      console.log('Ending session...');
+      await blockchainEndSession(program, publicKey);
+      console.log('✅ Session ended successfully');
       
       // Redirect back to home
       router.push('/');
     } catch (error) {
-      console.error('Error ending game:', error);
-      setSessionError(`Failed to end game: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Error ending session:', error);
+      setSessionError(`Failed to end session: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Still redirect even if ending fails
+      router.push('/');
     } finally {
       setIsProcessingBlockchain(false);
     }
-  }, [publicKey, signTransaction, sendTransaction, isSessionDelegated, router]);
+  }, [publicKey, signTransaction, sendTransaction, router]);
 
   const saveScore = useCallback((finalScore: number) => {
     try {
@@ -548,14 +654,14 @@ export default function FruitNinja() {
     }
   }, [gameOver, score, bestScore]);
 
-  // Update your game over effect to save the score
+  // Updated game over effect - just save score and trigger endGame
   useEffect(() => {
     if (gameOver && score > 0) {
       saveScore(score);
       if (score > bestScore) {
         setBestScore(score);
       }
-      // Auto end game after saving score
+      // Don't auto end game anymore, just call endGame to show score screen
       endGame();
     }
   }, [gameOver, score, bestScore, saveScore, endGame]);
@@ -795,7 +901,7 @@ export default function FruitNinja() {
               )}
             </div>
 
-            {gameStarted && isSessionDelegated && (
+            {gameStarted && isSessionDelegated && !showScoreScreen && !showFinalScore && (
               <button
                 onClick={endGame}
                 disabled={isProcessingBlockchain}
@@ -837,17 +943,35 @@ export default function FruitNinja() {
               onTouchEnd={handleMouseUp}
             />
 
-            {!gameStarted && (
+            {!gameStarted && !showScoreScreen && !showFinalScore && (
               <GameStartOverlay 
                 onStartGame={startGame} 
                 isProcessing={isProcessingBlockchain}
               />
             )}
 
-            {gameOver && (
+            {gameOver && !showScoreScreen && !showFinalScore && (
               <GameOverOverlay 
                 score={score} 
                 onPlayAgain={startGame}
+                isProcessing={isProcessingBlockchain}
+              />
+            )}
+
+            {/* Score Screen */}
+            {showScoreScreen && (
+              <ScoreScreen
+                score={score}
+                onViewScore={handleViewScore}
+                isProcessing={isProcessingBlockchain}
+              />
+            )}
+
+            {/* Final Score Screen */}
+            {showFinalScore && (
+              <FinalScoreScreen
+                score={score}
+                onBackHome={handleBackHome}
                 isProcessing={isProcessingBlockchain}
               />
             )}

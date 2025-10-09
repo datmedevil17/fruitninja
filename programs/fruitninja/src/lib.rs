@@ -14,7 +14,7 @@ use ephemeral_rollups_sdk::ephem::{
     commit_and_undelegate_accounts,
 };
 
-declare_id!("2yTboNmZbPJJey7Cf3mUyW1AyUc2m4rdWiCGg8qKMQq4");
+declare_id!("JCFR4CoTiRnTpL76ySSDCaHjJ2JtbME4wL3G5XpFnsgX");
 
 #[ephemeral]
 #[program]
@@ -186,17 +186,18 @@ pub mod fruitninja {
     let session = &ctx.accounts.session;
     require!(session.is_active, ErrorCode::SessionNotActive);
 
-    // NOTE: SDK's helper is named `delegate_session_pda` (per compiler hint)
-    // and expects 4 args: payer, seeds, DelegateConfig, session_pda AccountInfo
-    ctx.accounts.delegate_session_pda(
-        &ctx.accounts.payer,                                           // payer signer
-        &[SESSION_SEED, session.player.as_ref()],                      // seeds for the session PDA
+    ctx.accounts.delegate_session(
+        &ctx.accounts.payer,
+        &[SESSION_SEED, session.player.as_ref()],
         DelegateConfig {
             commit_frequency_ms: 30_000,
-            validator: Some(pubkey!("MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57")),
+            validator: Some(
+                "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57"
+                    .parse::<Pubkey>()
+                    .unwrap(),
+            ),
+            ..Default::default()
         },
-
-
     )?;
 
     msg!("Session delegated to Ephemeral Rollup validator");
@@ -254,11 +255,12 @@ pub mod fruitninja {
     /// Manual commit without undelegation (for periodic checkpoints)
     pub fn commit_session(ctx: Context<CommitSession>) -> Result<()> {
          commit_accounts(
-        &ctx.accounts.magic_context,
-        vec![&ctx.accounts.session.to_account_info()],
-        &ctx.accounts.magic_program,
-        &ctx.accounts.payer.to_account_info(),
-    )?;
+    &ctx.accounts.payer,
+    vec![&ctx.accounts.session.to_account_info()],
+    &ctx.accounts.magic_context,
+    &ctx.accounts.magic_program,
+)?;
+
         
         msg!("Session state committed");
         Ok(())
@@ -629,13 +631,10 @@ pub struct DelegateSession<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
-    /// CHECK: This is a PDA for session delegation. 
-    /// Safety is guaranteed by the Ephemeral Rollups SDK; Anchor cannot type-check it.
-    #[account(mut, del)]
-    pub session_pda: AccountInfo<'info>,
-
-    #[account(
-        seeds = [SESSION_SEED, payer.key().as_ref()],
+     #[account(
+        mut,
+        del, // 👈 this tells the SDK this is the delegatable PDA
+        seeds = [SESSION_SEED, session.player.as_ref()],
         bump = session.bump
     )]
     pub session: Account<'info, GameSession>,
@@ -889,34 +888,5 @@ pub struct GameOver {
 
 
 
-#[account]
-pub struct BufferSession {
-    pub session: Pubkey, // 32 bytes
-    pub bump: u8,        // 1 byte
-    // Add more fields as needed for your buffer session logic
-}
 
-impl BufferSession {
-    pub const LEN: usize = 8 + 32 + 1; // discriminator + session pubkey + bump
-}
 
-#[derive(Accounts)]
-pub struct InitBufferSession<'info> {
-    #[account(mut)]
-    pub payer: Signer<'info>,
-    #[account(
-        init,
-        space = BufferSession::LEN,
-        payer = payer,
-        seeds = [b"buffer", session.key().as_ref()],
-        bump
-    )]
-    pub buffer_session_pda: Account<'info, BufferSession>,
-    pub system_program: Program<'info, System>,
-    pub session: Account<'info, GameSession>,
-}
-
-pub fn init_buffer_session(_ctx: Context<InitBufferSession>) -> Result<()> {
-    // nothing else needed; account is created
-    Ok(())
-}

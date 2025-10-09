@@ -15,11 +15,13 @@ export const sliceFruit = async (
     [Buffer.from("session"), playerPublicKey.toBuffer()],
     program.programId
   );
+  console.log(sessionPda.toBase58());
 
   const [configPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("config")],
     program.programId
   );
+  console.log(configPda.toBase58());
 
   console.log("Slicing fruit for player:", playerPublicKey.toString());
   console.log("Points:", points);

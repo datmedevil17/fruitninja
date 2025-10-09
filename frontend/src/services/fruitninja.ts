@@ -5,7 +5,7 @@
  * IDL can be found at `target/idl/fruitninja.json`.
  */
 export type Fruitninja = {
-  "address": "2yTboNmZbPJJey7Cf3mUyW1AyUc2m4rdWiCGg8qKMQq4",
+  "address": "JCFR4CoTiRnTpL76ySSDCaHjJ2JtbME4wL3G5XpFnsgX",
   "metadata": {
     "name": "fruitninja",
     "version": "0.1.0",
@@ -165,7 +165,7 @@ export type Fruitninja = {
           "signer": true
         },
         {
-          "name": "bufferSessionPda",
+          "name": "bufferSession",
           "writable": true,
           "pda": {
             "seeds": [
@@ -182,50 +182,50 @@ export type Fruitninja = {
               },
               {
                 "kind": "account",
-                "path": "sessionPda"
+                "path": "session"
               }
             ],
             "program": {
               "kind": "const",
               "value": [
-                29,
-                82,
+                255,
+                120,
+                93,
+                142,
                 73,
-                248,
+                137,
+                45,
+                47,
+                109,
+                98,
+                205,
+                113,
+                93,
+                199,
+                205,
+                236,
+                230,
+                103,
+                40,
                 28,
-                194,
-                174,
-                148,
-                78,
-                223,
-                55,
-                229,
-                213,
+                43,
+                59,
+                13,
+                98,
+                3,
+                49,
+                169,
+                10,
                 216,
-                182,
-                22,
-                179,
-                16,
-                129,
-                90,
-                163,
-                15,
-                46,
-                121,
-                0,
-                170,
-                12,
-                96,
-                239,
-                139,
-                27,
-                159
+                25,
+                86,
+                196
               ]
             }
           }
         },
         {
-          "name": "delegationRecordSessionPda",
+          "name": "delegationRecordSession",
           "writable": true,
           "pda": {
             "seeds": [
@@ -246,7 +246,7 @@ export type Fruitninja = {
               },
               {
                 "kind": "account",
-                "path": "sessionPda"
+                "path": "session"
               }
             ],
             "program": {
@@ -256,7 +256,7 @@ export type Fruitninja = {
           }
         },
         {
-          "name": "delegationMetadataSessionPda",
+          "name": "delegationMetadataSession",
           "writable": true,
           "pda": {
             "seeds": [
@@ -286,7 +286,7 @@ export type Fruitninja = {
               },
               {
                 "kind": "account",
-                "path": "sessionPda"
+                "path": "session"
               }
             ],
             "program": {
@@ -296,14 +296,8 @@ export type Fruitninja = {
           }
         },
         {
-          "name": "sessionPda",
-          "docs": [
-            "Safety is guaranteed by the Ephemeral Rollups SDK; Anchor cannot type-check it."
-          ],
-          "writable": true
-        },
-        {
           "name": "session",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -320,14 +314,15 @@ export type Fruitninja = {
               },
               {
                 "kind": "account",
-                "path": "payer"
+                "path": "session.player",
+                "account": "gameSession"
               }
             ]
           }
         },
         {
           "name": "ownerProgram",
-          "address": "2yTboNmZbPJJey7Cf3mUyW1AyUc2m4rdWiCGg8qKMQq4"
+          "address": "JCFR4CoTiRnTpL76ySSDCaHjJ2JtbME4wL3G5XpFnsgX"
         },
         {
           "name": "delegationProgram",

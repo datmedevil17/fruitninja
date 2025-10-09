@@ -1,5 +1,5 @@
 import { PublicKey } from "@solana/web3.js";
 
-export const OWNER_PROGRAM = new PublicKey("2yTboNmZbPJJey7Cf3mUyW1AyUc2m4rdWiCGg8qKMQq4");
+// Your on-chain program IDs (keep as-is)
+export const OWNER_PROGRAM = new PublicKey("JCFR4CoTiRnTpL76ySSDCaHjJ2JtbME4wL3G5XpFnsgX");
 export const DELEGATION_PROGRAM = new PublicKey("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh");
-export const BUFFER_PROGRAM = new PublicKey("4WcKGLN8Cz1HkS8cBtdBCLkYZMQqexZWB8PR9RV1eWvQ");
