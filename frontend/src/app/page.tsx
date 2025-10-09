@@ -3,7 +3,32 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { checkProfileExists, initializeProfile, getProvider, startGameSession, checkActiveSession, fetchGameSession } from '@/services';
+import { PublicKey } from '@solana/web3.js';
+import { 
+  checkProfileExists, 
+  initializeProfile, 
+  getProvider, 
+  startGameSession, 
+  checkActiveSession, 
+  fetchGameSession 
+} from '@/services';
+
+// Add the GameSession type definition with proper types
+interface GameSession {
+  player: PublicKey;
+  currentScore: {
+    toString(): string;
+  };
+  combo: number;
+  lives: number;
+  isActive: boolean;
+  fruitsSliced: {
+    toString(): string;
+  };
+  maxCombo: number;
+  sessionPda?: string;
+  isDelegated?: boolean;
+}
 
 // Profile Creation Modal Component
 const ProfileModal = ({ isOpen, onClose, onCreateProfile }: {
@@ -91,7 +116,7 @@ export default function Home() {
   const [hasProfile, setHasProfile] = useState(false);
   const [isStartingGame, setIsStartingGame] = useState(false);
   const [hasActiveSession, setHasActiveSession] = useState(false);
-  const [currentSession, setCurrentSession] = useState<any>(null);
+  const [currentSession, setCurrentSession] = useState<GameSession | null>(null);
 
   // Check if user has a profile and active session when wallet connects
   useEffect(() => {
@@ -117,7 +142,6 @@ export default function Home() {
         setHasProfile(profileExists);
         
         if (!profileExists) {
-          setShowProfileModal(true);
           setHasActiveSession(false);
           setCurrentSession(null);
           return;

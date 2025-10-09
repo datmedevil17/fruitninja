@@ -1,7 +1,8 @@
 // page.tsx
-"use client";
-import React, { useMemo, useState } from "react";
+"use client";;
+import { useMemo, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { Program } from "@coral-xyz/anchor";
 import {
   startGameSession,
   checkActiveSession,
@@ -13,11 +14,14 @@ import {
   checkSessionDelegated,
   getActiveSessionInfo,
   getConfigInfo,
-  logAllSessionAndConfigInfo,
   fetchGameSession,
   getProvider,
 } from "@/services";
-import { MAGICBLOCK_RPC } from "@/utils/helpers";
+import type { Fruitninja } from "@/services/fruitninja";
+
+// Add proper type definitions at the top
+type GameProgram = Program<Fruitninja>;
+type ProgramFunction<T = unknown> = (program: GameProgram) => Promise<T>;
 
 const Page = () => {
   const { publicKey, signTransaction, sendTransaction } = useWallet();
@@ -28,7 +32,7 @@ const Page = () => {
     return getProvider(publicKey, signTransaction, sendTransaction);
   }, [publicKey, signTransaction, sendTransaction]);
 
-  const withProgram = async (fn: (program: any) => Promise<any>) => {
+  const withProgram = async <T = unknown>(fn: ProgramFunction<T>): Promise<T | undefined> => {
     if (!programPromise) {
       console.error("Wallet or program not available");
       return;
@@ -119,11 +123,7 @@ const Page = () => {
     console.log("⚙️ Game Config:", config);
   });
 
-  const handleLogAllInfo = createHandler('logAll', async () => {
-    if (!publicKey || !programPromise) return;
-    await withProgram((p) => logAllSessionAndConfigInfo(p, publicKey));
-    console.log("📋 Complete report logged to console");
-  });
+
 
   const buttonStyle = (key: string, color = '#007bff') => ({
     padding: '12px 20px',
@@ -269,15 +269,6 @@ const Page = () => {
       >
         {loadingStates.configInfo ? '🔄 Loading...' : '⚙️ Get Game Config'}
       </button>
-
-      <button 
-        onClick={handleLogAllInfo} 
-        disabled={!publicKey || loadingStates.logAll}
-        style={buttonStyle('logAll', '#343a40')}
-      >
-        {loadingStates.logAll ? '🔄 Generating...' : '📋 Log Complete Report'}
-      </button>
-
       {/* Console Info */}
       <div style={{ 
         marginTop: "20px", 

@@ -1,5 +1,3 @@
-import React from 'react';
-
 interface GameHeaderProps {
   score: number;
   lives: number;
@@ -9,37 +7,44 @@ interface GameHeaderProps {
 
 export default function GameHeader({ score, lives, multiplier, bestScore }: GameHeaderProps) {
   return (
-    <div className="text-center mb-6">
-      <div className="flex items-center justify-center gap-3 mb-4">
-        <div className="text-4xl animate-pulse">🥷</div>
-        <h1 className="text-3xl sm:text-5xl font-black text-gray-800">
-          Fruit Ninja
-        </h1>
-        <div className="text-4xl animate-pulse">🗡️</div>
+    <div className="text-center mb-8">
+      <div className="flex items-center justify-center gap-4 mb-6">
+        <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center">
+          <span className="text-lg">🥷</span>
+        </div>
+        <h1 className="text-3xl font-bold text-slate-900">Fruit Ninja</h1>
+        <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center">
+          <span className="text-lg">🗡️</span>
+        </div>
       </div>
       
-      {/* Minimalist Stats Bar */}
-      <div className="flex justify-between items-center gap-4 bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-lg border border-gray-200">
-        <div className="flex items-center gap-4">
-          <div className="text-center">
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Score</div>
-            <div className="text-2xl font-black text-gray-800">{score.toLocaleString()}</div>
-            {multiplier > 1 && (
-              <div className="text-xs font-bold text-orange-600 animate-pulse">×{multiplier} Bonus</div>
-            )}
-          </div>
-          
-          <div className="h-12 w-px bg-gray-300"></div>
-          
-          <div className="text-center">
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Lives</div>
-            <div className="text-lg">{'❤️'.repeat(Math.max(0, Math.min(lives, 5)))}{'🤍'.repeat(Math.max(0, 5 - lives))}</div>
+      {/* Professional Stats */}
+      <div className="grid grid-cols-3 gap-6 bg-white/60 backdrop-blur-sm rounded-2xl p-6 border border-white/50">
+        <div className="text-center">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Score</div>
+          <div className="text-2xl font-bold text-slate-900">{score.toLocaleString()}</div>
+          {multiplier > 1 && (
+            <div className="text-xs font-medium text-orange-600 mt-1">×{multiplier} Multiplier</div>
+          )}
+        </div>
+        
+        <div className="text-center border-l border-r border-slate-200">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Lives</div>
+          <div className="flex justify-center gap-1">
+            {Array.from({ length: 5 }, (_, i) => (
+              <div 
+                key={i}
+                className={`w-3 h-3 rounded-full ${
+                  i < lives ? 'bg-red-500' : 'bg-slate-200'
+                }`}
+              />
+            ))}
           </div>
         </div>
         
         <div className="text-center">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Best</div>
-          <div className="text-lg font-bold text-gray-800">{bestScore.toLocaleString()}</div>
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Best</div>
+          <div className="text-2xl font-bold text-slate-900">{bestScore.toLocaleString()}</div>
         </div>
       </div>
     </div>

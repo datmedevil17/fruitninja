@@ -2,6 +2,24 @@ import { BN, Program } from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram, TransactionSignature } from "@solana/web3.js";
 import type { Fruitninja } from "../fruitninja";
 
+// Define the GameConfig type based on your program's structure
+interface LeaderboardEntry {
+  player: PublicKey;
+  score: BN;
+  timestamp: BN;
+}
+
+interface GameConfig {
+  leaderboard: LeaderboardEntry[];
+  admin: PublicKey;
+  maxLives: number;
+  maxPointsPerFruit: BN;
+  comboMultiplierBase: BN;
+  leaderboardCapacity: number;
+  bump: number;
+  // Add other config properties as needed
+}
+
 export const initializeConfig = async (
   program: Program<Fruitninja>,
   adminPublicKey: PublicKey,
@@ -19,8 +37,10 @@ export const initializeConfig = async (
     const existingConfig = await program.account.gameConfig.fetch(configPda);
     console.log("⚠️ Config already exists:", existingConfig);
     throw new Error(`Config is already initialized!`);
-  } catch (err: any) {
-    if (!err.message.includes("Account does not exist")) throw err;
+  } catch (err: unknown) {
+    if (err instanceof Error && !err.message.includes("Account does not exist")) {
+      throw err;
+    }
   }
 
   const balance = await program.provider.connection.getBalance(adminPublicKey);
@@ -40,7 +60,7 @@ export const initializeConfig = async (
   return signature;
 };
 
-export const fetchConfig = async (program: Program<Fruitninja>): Promise<any> => {
+export const fetchConfig = async (program: Program<Fruitninja>): Promise<GameConfig | null> => {
   const [configPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("config")],
     program.programId
@@ -49,7 +69,7 @@ export const fetchConfig = async (program: Program<Fruitninja>): Promise<any> =>
   try {
     const config = await program.account.gameConfig.fetch(configPda);
     console.log("Current config:", config);
-    return config;
+    return config as GameConfig;
   } catch {
     console.log("Config does not exist yet");
     return null;

@@ -2,6 +2,16 @@ import { Program } from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 import type { Fruitninja } from "../fruitninja";
 
+// Define the PlayerProfile interface
+interface PlayerProfile {
+  player: PublicKey;
+  username: string;
+  highScore?: number;
+  gamesPlayed?: number;
+  totalScore?: number;
+  // Add other profile properties as needed
+}
+
 export const initializeProfile = async (
   program: Program<Fruitninja>,
   playerPublicKey: PublicKey,
@@ -31,8 +41,10 @@ export const initializeProfile = async (
     const existingProfile = await program.account.playerProfile.fetch(playerProfilePda);
     console.log("⚠️ Profile already exists:", existingProfile);
     throw new Error(`Profile already exists for player: ${playerPublicKey.toString()}`);
-  } catch (err: any) {
-    if (!err.message.includes("Account does not exist")) throw err;
+  } catch (err: unknown) {
+    if (err instanceof Error && !err.message.includes("Account does not exist")) {
+      throw err;
+    }
   }
 
   const balance = await program.provider.connection.getBalance(playerPublicKey);
@@ -59,7 +71,7 @@ export const initializeProfile = async (
 export const fetchProfile = async (
   program: Program<Fruitninja>,
   playerPublicKey: PublicKey
-): Promise<any> => {
+): Promise<PlayerProfile | null> => {
   const [playerProfilePda] = PublicKey.findProgramAddressSync(
     [Buffer.from("profile"), playerPublicKey.toBuffer()],
     program.programId
@@ -68,8 +80,17 @@ export const fetchProfile = async (
   try {
     const profile = await program.account.playerProfile.fetch(playerProfilePda);
     console.log("Player profile:", profile);
-    return profile;
-  } catch (error) {
+    // Map the fetched profile to PlayerProfile interface
+    const mappedProfile: PlayerProfile = {
+      player: profile.owner,
+      username: profile.username ?? "",
+      highScore: profile.highScore?.toNumber(),
+      gamesPlayed: profile.totalGames?.toNumber(),
+      totalScore: profile.totalFruitsSliced?.toNumber(),
+      // Add other mappings if needed
+    };
+    return mappedProfile;
+  } catch {
     console.log("Profile does not exist for player:", playerPublicKey.toString());
     return null;
   }
@@ -94,11 +115,18 @@ export const checkProfileExists = async (
 
 export const fetchAllProfiles = async (
   program: Program<Fruitninja>
-): Promise<any[]> => {
+): Promise<PlayerProfile[]> => {
   try {
     const profiles = await program.account.playerProfile.all();
     console.log("All player profiles:", profiles);
-    return profiles;
+    return profiles.map(p => ({
+      player: p.account.owner,
+      username: p.account.username ?? "",
+      highScore: p.account.highScore?.toNumber(),
+      gamesPlayed: p.account.totalGames?.toNumber(),
+      totalScore: p.account.totalFruitsSliced?.toNumber(),
+      // Add other mappings if needed
+    }));
   } catch (error) {
     console.error("Error fetching all profiles:", error);
     return [];

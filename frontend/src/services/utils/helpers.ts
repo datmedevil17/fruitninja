@@ -41,10 +41,10 @@ export const getGameDuration = async (
   playerPublicKey: PublicKey
 ): Promise<number | null> => {
   const session = await fetchGameSession(program, playerPublicKey);
-  if (!session || !session.startedAt) return null;
+  if (!session || !session.startTime) return null;
 
-  const startTime = session.startedAt.toNumber();
-  const endTime = session.endedAt?.toNumber() || Date.now() / 1000;
+  const startTime = session.startTime.toNumber();
+  const endTime = session.endTime?.toNumber() || Date.now() / 1000;
   
   return endTime - startTime;
 };

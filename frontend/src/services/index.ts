@@ -28,7 +28,6 @@ export {
   checkSessionDelegated,
   getActiveSessionInfo,
   getConfigInfo,
-  logAllSessionAndConfigInfo
 } from './session/sessionService';
 
 // Game Actions

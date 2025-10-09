@@ -1,5 +1,3 @@
-import React from 'react';
-
 export default function GameTips() {
   return (
     <div className="mt-6 text-center">

@@ -1,5 +1,5 @@
 // services.ts
-import { BN, Program, AnchorProvider } from "@coral-xyz/anchor";
+import { BN, Program } from "@coral-xyz/anchor";
 import {
   Connection,
   Keypair,
@@ -12,13 +12,91 @@ import type { Fruitninja } from "../fruitninja";
 import { OWNER_PROGRAM,DELEGATION_PROGRAM } from "../constants/programs";
 import { MAGICBLOCK_RPC } from "@/utils/helpers";
 
+// Type definitions
+interface GameSession {
+  endTime: BN;
+  startTime: BN;
+  player: PublicKey;
+  currentScore: BN;
+  combo: number;
+  lives: number;
+  isActive: boolean;
+  fruitsSliced: BN;
+  maxCombo: number;
+  sessionPda?: string;
+  isDelegated?: boolean;
+}
+
+interface LeaderboardEntry {
+  player: PublicKey;
+  score: BN;
+  timestamp: BN;
+}
+
+interface GameConfig {
+  admin: PublicKey;
+  maxLives: number;
+  maxPointsPerFruit: BN;
+  comboMultiplierBase: BN;
+  leaderboardCapacity: number;
+  bump: number;
+  leaderboard: LeaderboardEntry[];
+}
+
+interface FormattedLeaderboardEntry {
+  rank: number;
+  player: string;
+  score: string;
+  timestamp: string;
+}
+
+interface ConfigInfo {
+  pda: string;
+  admin: string;
+  maxLives: number;
+  maxPointsPerFruit: string;
+  comboMultiplierBase: string;
+  leaderboardCapacity: number;
+  bump: number;
+  leaderboard: FormattedLeaderboardEntry[];
+}
+
+interface DelegationInfo {
+  accountExists: boolean;
+  accountOwner?: string;
+  programId?: string;
+  isDelegated?: boolean;
+  sessionPda?: string;
+  bufferAccount?: {
+    pda: string;
+    exists: boolean;
+  };
+  error?: string;
+}
+
+interface SessionInfo {
+  hasActiveSession: boolean;
+  isDelegated: boolean;
+  sessionData: GameSession | null;
+  delegationInfo: DelegationInfo;
+}
+
+interface FormattedSessionData {
+  currentScore: string;
+  combo: number;
+  lives: number;
+  isActive: boolean;
+  fruitsSliced: string;
+  maxCombo: number;
+}
+
 /**
  * fetchGameSession: retrieves the current game session for a player
  */
 export const fetchGameSession = async (
   program: Program<Fruitninja>,
   playerPublicKey: PublicKey
-): Promise<any | null> => {
+): Promise<GameSession | null> => {
   try {
     const [sessionPda] = getSessionPda(program.programId, playerPublicKey);
     
@@ -29,14 +107,14 @@ export const fetchGameSession = async (
     }
 
     // Fetch the session data
-    const session = await program.account.gameSession.fetch(sessionPda);
+    const session = await program.account.gameSession.fetch(sessionPda) as unknown as GameSession;
     
     return {
       ...session,
       sessionPda: sessionPda.toBase58(),
       isDelegated: !accountInfo.owner.equals(program.programId)
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Handle account not found errors
     if (String(err).includes("Account does not exist") || 
         String(err).includes("AccountNotFound")) {
@@ -65,9 +143,9 @@ export const startGameSession = async (program: Program<Fruitninja>, player: Pub
 
   // Check existing session
   try {
-    const existingSession = await program.account.gameSession.fetch(sessionPda);
+    const existingSession = await program.account.gameSession.fetch(sessionPda) as unknown as GameSession;
     if (existingSession.isActive) throw new Error("Player already has an active session");
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Anchor throws when account doesn't exist — that's ok for initializing
     if (!String(err).includes("Account does not exist") && !String(err).includes("AccountNotFound")) {
       throw err;
@@ -409,9 +487,6 @@ export const undelegateSession = async (
   return signature;
 };
 
-
-// ...existing code...
-
 /**
  * checkActiveSession: checks if a player has an active game session
  */
@@ -422,63 +497,16 @@ export const checkActiveSession = async (
   try {
     const session = await fetchGameSession(program, playerPublicKey);
     return session !== null && session.isActive;
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.warn("Error checking active session:", err);
     return false;
   }
 };
 
-// ...existing code...
-
-// Example usage (to be removed in production)
-// const program = ...; // your initialized program instance
-// const playerPublicKey = ...; // player's public key
-
-/**
- * checkSessionDelegated: checks if a session is currently delegated
- */
-export const checkSessionDelegated = async (
-  program: Program<Fruitninja>,
-  playerPublicKey: PublicKey
-): Promise<boolean> => {
-  try {
-    const [sessionPda] = getSessionPda(program.programId, playerPublicKey);
-    
-    const accountInfo = await program.provider.connection.getAccountInfo(sessionPda);
-    if (!accountInfo) {
-      console.log("❌ No session account found");
-      return false;
-    }
-
-    // If account owner is not the program, it's delegated
-    const isDelegated = !accountInfo.owner.equals(program.programId);
-    
-    console.log("🔍 Session delegation status:", {
-      sessionPda: sessionPda.toBase58(),
-      accountOwner: accountInfo.owner.toBase58(),
-      programId: program.programId.toBase58(),
-      isDelegated
-    });
-
-    return isDelegated;
-  } catch (error) {
-    console.error("Error checking delegation status:", error);
-    return false;
-  }
-};
-
-/**
- * getActiveSessionInfo: gets detailed info about active session and delegation status
- */
 export const getActiveSessionInfo = async (
   program: Program<Fruitninja>,
   playerPublicKey: PublicKey
-): Promise<{
-  hasActiveSession: boolean;
-  isDelegated: boolean;
-  sessionData: any | null;
-  delegationInfo: any;
-}> => {
+): Promise<SessionInfo> => {
   try {
     const [sessionPda] = getSessionPda(program.programId, playerPublicKey);
     
@@ -495,20 +523,10 @@ export const getActiveSessionInfo = async (
     }
 
     // Fetch session data
-    const sessionData = await program.account.gameSession.fetch(sessionPda);
+    const sessionData = await program.account.gameSession.fetch(sessionPda) as unknown as GameSession;
     const isDelegated = !accountInfo.owner.equals(program.programId);
     
-    const delegationInfo: {
-      accountExists: boolean;
-      accountOwner: string;
-      programId: string;
-      isDelegated: boolean;
-      sessionPda: string;
-      bufferAccount?: {
-        pda: string;
-        exists: boolean;
-      };
-    } = {
+    const delegationInfo: DelegationInfo = {
       accountExists: true,
       accountOwner: accountInfo.owner.toBase58(),
       programId: program.programId.toBase58(),
@@ -534,18 +552,20 @@ export const getActiveSessionInfo = async (
       }
     }
 
+    const formattedSessionData: FormattedSessionData = {
+      currentScore: sessionData.currentScore?.toString(),
+      combo: sessionData.combo,
+      lives: sessionData.lives,
+      isActive: sessionData.isActive,
+      fruitsSliced: sessionData.fruitsSliced?.toString(),
+      maxCombo: sessionData.maxCombo
+    };
+
     console.log("📊 Active Session Info:", {
       player: playerPublicKey.toBase58(),
       hasActiveSession: sessionData.isActive,
       isDelegated,
-      sessionData: {
-        currentScore: sessionData.currentScore?.toString(),
-        combo: sessionData.combo,
-        lives: sessionData.lives,
-        isActive: sessionData.isActive,
-        fruitsSliced: sessionData.fruitsSliced?.toString(),
-        maxCombo: sessionData.maxCombo
-      },
+      sessionData: formattedSessionData,
       delegationInfo
     });
 
@@ -561,7 +581,7 @@ export const getActiveSessionInfo = async (
       hasActiveSession: false,
       isDelegated: false,
       sessionData: null,
-      delegationInfo: { error: String(error) }
+      delegationInfo: { accountExists: false, error: String(error) }
     };
   }
 };
@@ -569,15 +589,15 @@ export const getActiveSessionInfo = async (
 /**
  * getConfigInfo: fetches and logs all game configuration details
  */
-export const getConfigInfo = async (program: Program<Fruitninja>): Promise<any> => {
+export const getConfigInfo = async (program: Program<Fruitninja>): Promise<ConfigInfo> => {
   try {
     const [configPda] = getConfigPda(program.programId);
     
     console.log("🔍 Fetching config from PDA:", configPda.toBase58());
     
-    const config = await program.account.gameConfig.fetch(configPda);
+    const config = await program.account.gameConfig.fetch(configPda) as GameConfig;
     
-    const configInfo = {
+    const configInfo: ConfigInfo = {
       pda: configPda.toBase58(),
       admin: config.admin.toBase58(),
       maxLives: config.maxLives,
@@ -585,11 +605,11 @@ export const getConfigInfo = async (program: Program<Fruitninja>): Promise<any> 
       comboMultiplierBase: config.comboMultiplierBase?.toString(),
       leaderboardCapacity: config.leaderboardCapacity,
       bump: config.bump,
-      leaderboard: config.leaderboard?.map((entry: any, index: number) => ({
+      leaderboard: config.leaderboard?.map((entry: LeaderboardEntry, index: number): FormattedLeaderboardEntry => ({
         rank: index + 1,
         player: entry.player.toBase58(),
         score: entry.score?.toString(),
-        timestamp: new Date(entry.timestamp * 1000).toISOString()
+        timestamp: new Date(entry.timestamp.toNumber() * 1000).toISOString()
       })) || []
     };
 
@@ -627,33 +647,55 @@ export const getConfigInfo = async (program: Program<Fruitninja>): Promise<any> 
 };
 
 /**
- * logAllSessionAndConfigInfo: comprehensive logging function
+ * checkSessionDelegated: Simple function to check if a session is delegated
  */
-export const logAllSessionAndConfigInfo = async (
+export const checkSessionDelegated = async (
   program: Program<Fruitninja>,
   playerPublicKey: PublicKey
-): Promise<void> => {
-  console.log("\n" + "=".repeat(50));
-  console.log("📋 FRUIT NINJA SESSION & CONFIG REPORT");
-  console.log("=".repeat(50));
-  
+): Promise<boolean> => {
   try {
-    // Get config info
-    console.log("\n🔧 CONFIGURATION INFO:");
-    await getConfigInfo(program);
+    const [sessionPda] = getSessionPda(program.programId, playerPublicKey);
     
-    // Get session info
-    console.log("\n🎮 SESSION INFO:");
-    await getActiveSessionInfo(program, playerPublicKey);
+    // Check if session account exists
+    const accountInfo = await program.provider.connection.getAccountInfo(sessionPda);
+    if (!accountInfo) {
+      console.log("❌ No session found for player:", playerPublicKey.toBase58());
+      return false;
+    }
+
+    // Check if account owner is different from program ID (indicates delegation)
+    const isDelegated = !accountInfo.owner.equals(program.programId);
     
-    // Additional delegation checks
-    console.log("\n🔗 DELEGATION STATUS:");
-    const isDelegated = await checkSessionDelegated(program, playerPublicKey);
-    console.log(`Session is ${isDelegated ? 'DELEGATED' : 'NOT DELEGATED'}`);
-    
+    console.log("🔍 Session delegation check:", {
+      player: playerPublicKey.toBase58(),
+      sessionPda: sessionPda.toBase58(),
+      accountOwner: accountInfo.owner.toBase58(),
+      programId: program.programId.toBase58(),
+      isDelegated
+    });
+
+    return isDelegated;
   } catch (error) {
-    console.error("❌ Error in comprehensive report:", error);
+    console.error("Error checking session delegation:", error);
+    return false;
   }
-  
-  console.log("=".repeat(50) + "\n");
+};
+
+/**
+ * getDetailedDelegationInfo: Get comprehensive delegation information
+ */
+export const getDetailedDelegationInfo = async (
+  program: Program<Fruitninja>,
+  playerPublicKey: PublicKey
+): Promise<DelegationInfo> => {
+  try {
+    const sessionInfo = await getActiveSessionInfo(program, playerPublicKey);
+    return sessionInfo.delegationInfo;
+  } catch (error) {
+    console.error("Error getting detailed delegation info:", error);
+    return { 
+      accountExists: false, 
+      error: String(error) 
+    };
+  }
 };

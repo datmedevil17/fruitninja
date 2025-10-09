@@ -1,10 +1,10 @@
 'use client'
-import React, { useMemo, useState } from 'react'
+import { useMemo, useState } from 'react';
 import { initializeConfig, getProvider } from '@/services'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { BN } from "@coral-xyz/anchor"
 
-const page = () => {
+const Admin = () => {
   const { publicKey, signTransaction, sendTransaction } = useWallet();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState('');
@@ -42,8 +42,10 @@ const page = () => {
       
       setSuccess(`Config initialized successfully! Transaction: ${tx}`);
       console.log("Transaction signature:", tx);
-    } catch (err: any) {
-      setError(`Failed to initialize config: ${err.message}`);
+    } catch (err: unknown) {
+      const errorMessage =
+        err instanceof Error ? err.message : String(err);
+      setError(`Failed to initialize config: ${errorMessage}`);
       console.error("Error initializing config:", err);
     } finally {
       setLoading(false);
@@ -135,4 +137,4 @@ const page = () => {
   )
 }
 
-export default page
+export default Admin

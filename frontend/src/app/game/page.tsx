@@ -7,72 +7,154 @@ import GameHeader from '../../components/GameHeader';
 import PowerupsDisplay from '../../components/PowerupsDisplay';
 import GameStartOverlay from '../../components/GameStartOverlay';
 import GameOverOverlay from '../../components/GameOverOverlay';
-import BackgroundElements from '../../components/BackgroundElements';
 import GameTips from '../../components/GameTips';
 import { Point,Fruit,Powerup,ActivePowerup,Particle,SlashTrail,FRUIT_TYPES,POWERUP_TYPES,GRAVITY } from '@/types/game';
-import { delegateSession, sliceFruit as blockchainSliceFruit, loseLife as blockchainLoseLife, undelegateAndEndSession as blockchainEndSession, getProvider, fetchGameSession, undelegateSession} from '@/services';
-import { PublicKey } from '@solana/web3.js';
+import { 
+  delegateSession, 
+  sliceFruit as blockchainSliceFruit, 
+  loseLife as blockchainLoseLife, 
+  undelegateAndEndSession as blockchainEndSession, 
+  getProvider, 
+  fetchGameSession, 
+  checkSessionDelegated,
+} from '@/services';
 
-// Add this new component for the score screen
-const ScoreScreen = ({ 
-  score, 
-  onViewScore, 
-  isProcessing 
+// Enhanced Toast notification component
+const Toast = ({ 
+  message, 
+  type, 
+  onClose, 
+  txHash 
 }: { 
-  score: number; 
-  onViewScore: () => void; 
-  isProcessing: boolean;
-}) => (
-  <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
-    <div className="bg-white rounded-2xl p-8 text-center max-w-md mx-4 shadow-2xl">
-      <div className="text-6xl mb-4">🎮</div>
-      <h2 className="text-3xl font-bold text-gray-800 mb-2">Game Over!</h2>
-      <p className="text-xl text-gray-600 mb-6">Your Score: <span className="font-bold text-orange-500">{score}</span></p>
-      
-      <button
-        onClick={onViewScore}
-        disabled={isProcessing}
-        className="bg-gradient-to-r from-orange-500 to-red-500 text-white px-8 py-3 rounded-xl font-semibold text-lg shadow-lg hover:from-orange-600 hover:to-red-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {isProcessing ? 'Processing...' : 'View Score'}
-      </button>
-    </div>
-  </div>
-);
-
-// Add this new component for the final score display
-const FinalScoreScreen = ({ 
-  score, 
-  onBackHome, 
-  isProcessing 
-}: { 
-  score: number; 
-  onBackHome: () => void; 
-  isProcessing: boolean;
+  message: string; 
+  type: 'success' | 'error' | 'processing'; 
+  onClose: () => void;
+  txHash?: string;
 }) => {
-  const getRankFromScore = (score: number) => {
-    if (score >= 1000) return "🏆 NINJA MASTER";
-    if (score >= 500) return "⚔️ FRUIT WARRIOR";
-    if (score >= 300) return "🎯 SHARP SHOOTER";
-    if (score >= 200) return "👍 GETTING BETTER";
-    if (score >= 100) return "💪 KEEP PRACTICING";
-    return "🎯 TRY AGAIN";
+  useEffect(() => {
+    if (type !== 'processing') {
+      const timer = setTimeout(onClose, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [type, onClose]);
+
+  const getIcon = () => {
+    switch (type) {
+      case 'success': return '✓';
+      case 'error': return '✕';
+      case 'processing': return '●';
+      default: return '●';
+    }
+  };
+
+  const getColors = () => {
+    switch (type) {
+      case 'success': return 'bg-emerald-50 border-emerald-200 text-emerald-700';
+      case 'error': return 'bg-red-50 border-red-200 text-red-700';
+      case 'processing': return 'bg-blue-50 border-blue-200 text-blue-700';
+      default: return 'bg-gray-50 border-gray-200 text-gray-700';
+    }
   };
 
   return (
-    <div className="absolute inset-0 bg-black/90 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl p-10 text-center max-w-lg mx-4 shadow-2xl">
-        <div className="text-8xl mb-6">🏆</div>
-        <h2 className="text-4xl font-bold text-gray-800 mb-4">Final Score</h2>
-        <div className="text-6xl font-bold text-orange-500 mb-4">{score}</div>
-        <div className="text-xl text-gray-600 mb-8">{getRankFromScore(score)}</div>
+    <div className={`rounded-lg border shadow-sm p-4 max-w-sm transition-all duration-300 ${getColors()}`}>
+      <div className="flex items-start gap-3">
+        <div className={`flex-shrink-0 ${type === 'processing' ? 'animate-pulse' : ''}`}>
+          <div className="w-5 h-5 rounded-full bg-current opacity-20 flex items-center justify-center">
+            <span className="text-xs font-medium">{getIcon()}</span>
+          </div>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium">{message}</p>
+          {txHash && (
+            <p className="text-xs opacity-70 mt-1 font-mono">
+              {txHash.slice(0, 8)}...{txHash.slice(-8)}
+            </p>
+          )}
+        </div>
+        {type !== 'processing' && (
+          <button 
+            onClick={onClose} 
+            className="flex-shrink-0 p-1 hover:bg-current hover:bg-opacity-10 rounded transition-colors"
+          >
+            <span className="sr-only">Close</span>
+            <span className="text-xs">✕</span>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Enhanced Toast container
+const ToastContainer = ({ toasts, removeToast }: { 
+  toasts: Array<{
+    id: string;
+    message: string;
+    type: 'success' | 'error' | 'processing';
+    txHash?: string;
+  }>;
+  removeToast: (id: string) => void;
+}) => {
+  return (
+    <div className="fixed top-6 right-6 z-50 space-y-3">
+      {toasts.map((toast) => (
+        <Toast
+          key={toast.id}
+          message={toast.message}
+          type={toast.type}
+          txHash={toast.txHash}
+          onClose={() => removeToast(toast.id)}
+        />
+      ))}
+    </div>
+  );
+};
+
+// Professional Score Screen
+const ScoreScreen = ({ 
+  score, 
+  onEndAndGoHome, 
+  isProcessing 
+}: { 
+  score: number; 
+  onEndAndGoHome: () => void; 
+  isProcessing: boolean;
+}) => {
+  const getRankFromScore = (score: number) => {
+    if (score >= 1000) return { title: "Ninja Master", icon: "🥇" };
+    if (score >= 500) return { title: "Fruit Warrior", icon: "🥈" };
+    if (score >= 300) return { title: "Sharp Shooter", icon: "🥉" };
+    if (score >= 200) return { title: "Getting Better", icon: "⭐" };
+    if (score >= 100) return { title: "Keep Practicing", icon: "💪" };
+    return { title: "Try Again", icon: "🎯" };
+  };
+
+  const rank = getRankFromScore(score);
+
+  return (
+    <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl p-8 text-center max-w-md mx-4 shadow-xl border border-slate-200">
+        <div className="mb-6">
+          <div className="text-6xl mb-4">{rank.icon}</div>
+          <h2 className="text-2xl font-semibold text-slate-900 mb-2">Game Complete</h2>
+          <div className="text-4xl font-bold text-slate-900 mb-2">{score.toLocaleString()}</div>
+          <p className="text-slate-600 font-medium">{rank.title}</p>
+        </div>
         
         <button
-          onClick={onBackHome}
+          onClick={onEndAndGoHome}
           disabled={isProcessing}
-          className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-8 py-3 rounded-xl font-semibold text-lg shadow-lg hover:from-blue-600 hover:to-purple-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed w-full"
+          className="w-full bg-slate-900 text-white py-3 px-6 rounded-lg font-medium hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          {isProcessing ? 'Ending Session...' : 'Back to Home'}
+          {isProcessing ? (
+            <span className="flex items-center justify-center gap-2">
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+              Ending Session...
+            </span>
+          ) : (
+            'End Game & Return Home'
+          )}
         </button>
       </div>
     </div>
@@ -105,9 +187,33 @@ export default function FruitNinja() {
   const [isProcessingBlockchain, setIsProcessingBlockchain] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
 
-  // New states for the score flow
+  // Toast state
+  const [toasts, setToasts] = useState<Array<{
+    id: string;
+    message: string;
+    type: 'success' | 'error' | 'processing';
+    txHash?: string;
+  }>>([]);
+
+  // Simplified state - just one score screen
   const [showScoreScreen, setShowScoreScreen] = useState(false);
-  const [showFinalScore, setShowFinalScore] = useState(false);
+
+  // Toast management functions
+  const addToast = useCallback((message: string, type: 'success' | 'error' | 'processing', txHash?: string) => {
+    const id = Date.now().toString();
+    setToasts(prev => [...prev, { id, message, type, txHash }]);
+    return id;
+  }, []);
+
+  const removeToast = useCallback((id: string) => {
+    setToasts(prev => prev.filter(toast => toast.id !== id));
+  }, []);
+
+  const updateToast = useCallback((id: string, message: string, type: 'success' | 'error', txHash?: string) => {
+    setToasts(prev => prev.map(toast => 
+      toast.id === id ? { ...toast, message, type, txHash } : toast
+    ));
+  }, []);
 
   // Check wallet connection and redirect if not connected
   useEffect(() => {
@@ -117,7 +223,7 @@ export default function FruitNinja() {
     }
   }, [publicKey, router]);
 
-  // Fetch initial session state
+  // Fetch initial session state and check delegation status
   useEffect(() => {
     const fetchSessionState = async () => {
       if (!publicKey || !signTransaction || !sendTransaction) return;
@@ -128,9 +234,12 @@ export default function FruitNinja() {
 
         const session = await fetchGameSession(program, publicKey);
         if (session && session.isActive) {
+          // Use the proper function to check if session is delegated
+          const isDelegated = await checkSessionDelegated(program, publicKey);
+          setIsSessionDelegated(isDelegated);
           setScore(session.currentScore?.toNumber() || 0);
           setLives(session.lives || 5);
-          console.log('Loaded existing session:', session);
+          console.log('Session status - Active:', session.isActive, 'Delegated:', isDelegated);
         }
       } catch (error) {
         console.error('Error fetching session state:', error);
@@ -138,32 +247,6 @@ export default function FruitNinja() {
     };
 
     fetchSessionState();
-  }, [publicKey, signTransaction, sendTransaction]);
-
-  // Check if session is already delegated on component mount
-  useEffect(() => {
-    const checkDelegationStatus = async () => {
-      if (!publicKey || !signTransaction || !sendTransaction) return;
-
-      try {
-        const program = getProvider(publicKey, signTransaction, sendTransaction);
-        if (!program) return;
-
-        const session = await fetchGameSession(program, publicKey);
-        if (session && session.isActive) {
-          // Check if session is delegated by trying to fetch delegation-related accounts
-          // This is a simplified check - you might need to implement a proper delegation status check
-          setIsSessionDelegated(true);
-          setScore(session.currentScore?.toNumber() || 0);
-          setLives(session.lives || 5);
-          console.log('Found existing delegated session:', session);
-        }
-      } catch (error) {
-        console.error('Error checking delegation status:', error);
-      }
-    };
-
-    checkDelegationStatus();
   }, [publicKey, signTransaction, sendTransaction]);
 
   // Responsive canvas sizing
@@ -193,6 +276,7 @@ export default function FruitNinja() {
     return 1;
   }, [activePowerups]);
 
+  // Reduced fruit spawn rate and speed
   const spawnFruit = useCallback(() => {
     const fruitType = FRUIT_TYPES[Math.floor(Math.random() * FRUIT_TYPES.length)];
     const size = Math.random() * 15 + 35;
@@ -201,9 +285,11 @@ export default function FruitNinja() {
     const x = Math.random() * (canvasSize.width - 2 * margin) + margin;
     const y = canvasSize.height + 50;
     
-    const maxHorizontalSpeed = 2;
+    // Reduced horizontal speed
+    const maxHorizontalSpeed = 1.2; // Reduced from 2
     const vx = (Math.random() - 0.5) * maxHorizontalSpeed;
-    const vy = -Math.random() * 8 - 10;
+    // Reduced vertical speed
+    const vy = -Math.random() * 6 - 8; // Reduced from 8-10 to 6-8
     
     const newFruit: Fruit = {
       id: Date.now() + Math.random(),
@@ -212,7 +298,7 @@ export default function FruitNinja() {
       vx,
       vy,
       rotation: 0,
-      rotationSpeed: (Math.random() - 0.5) * 0.15,
+      rotationSpeed: (Math.random() - 0.5) * 0.1, // Reduced rotation speed
       size,
       type: fruitType.type,
       emoji: fruitType.emoji,
@@ -230,8 +316,9 @@ export default function FruitNinja() {
     const x = Math.random() * (canvasSize.width - 2 * margin) + margin;
     const y = canvasSize.height + 50;
     
-    const vx = (Math.random() - 0.5) * 1.5;
-    const vy = -Math.random() * 6 - 8;
+    // Reduced powerup speed
+    const vx = (Math.random() - 0.5) * 1.0; // Reduced from 1.5
+    const vy = -Math.random() * 5 - 6; // Reduced from 6-8 to 5-6
     
     const newPowerup: Powerup = {
       id: Date.now() + Math.random(),
@@ -240,7 +327,7 @@ export default function FruitNinja() {
       vx,
       vy,
       rotation: 0,
-      rotationSpeed: (Math.random() - 0.5) * 0.1,
+      rotationSpeed: (Math.random() - 0.5) * 0.08, // Reduced rotation speed
       size,
       type: powerupType.type as 'slow' | 'double' | 'bomb' | 'freeze',
       emoji: powerupType.emoji,
@@ -267,43 +354,55 @@ export default function FruitNinja() {
     setParticles(prev => [...prev, ...newParticles]);
   }, []);
 
-  // Blockchain function to slice fruit
+  // Enhanced blockchain function to slice fruit with toast notifications
   const handleSliceFruitBlockchain = useCallback(async (points: number) => {
     if (!publicKey || !signTransaction || !sendTransaction || !isSessionDelegated) return;
 
+    const toastId = addToast('Processing slice transaction...', 'processing');
+
     try {
       setIsProcessingBlockchain(true);
       const program = getProvider(publicKey, signTransaction, sendTransaction);
       if (!program) throw new Error('Failed to get program provider');
 
-      await blockchainSliceFruit(program, publicKey, points);
+      const signature = await blockchainSliceFruit(program, publicKey, points);
       console.log(`✅ Sliced fruit on blockchain with ${points} points`);
+      
+      updateToast(toastId, `Fruit sliced! +${points} points`, 'success', signature);
     } catch (error) {
       console.error('Error slicing fruit on blockchain:', error);
-      setSessionError(`Failed to record slice: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setSessionError(`Failed to record slice: ${errorMessage}`);
+      updateToast(toastId, `Slice failed: ${errorMessage}`, 'error');
     } finally {
       setIsProcessingBlockchain(false);
     }
-  }, [publicKey, signTransaction, sendTransaction, isSessionDelegated]);
+  }, [publicKey, signTransaction, sendTransaction, isSessionDelegated, addToast, updateToast]);
 
-  // Blockchain function to lose life
+  // Enhanced blockchain function to lose life with toast notifications
   const handleLoseLifeBlockchain = useCallback(async () => {
     if (!publicKey || !signTransaction || !sendTransaction || !isSessionDelegated) return;
 
+    const toastId = addToast('Processing life loss...', 'processing');
+
     try {
       setIsProcessingBlockchain(true);
       const program = getProvider(publicKey, signTransaction, sendTransaction);
       if (!program) throw new Error('Failed to get program provider');
 
-      await blockchainLoseLife(program, publicKey);
+      const signature = await blockchainLoseLife(program, publicKey);
       console.log('✅ Lost life on blockchain');
+      
+      updateToast(toastId, 'Life lost! Be more careful!', 'success', signature);
     } catch (error) {
       console.error('Error losing life on blockchain:', error);
-      setSessionError(`Failed to record life loss: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setSessionError(`Failed to record life loss: ${errorMessage}`);
+      updateToast(toastId, `Life loss failed: ${errorMessage}`, 'error');
     } finally {
       setIsProcessingBlockchain(false);
     }
-  }, [publicKey, signTransaction, sendTransaction, isSessionDelegated]);
+  }, [publicKey, signTransaction, sendTransaction, isSessionDelegated, addToast, updateToast]);
 
   const activatePowerup = useCallback((type: string) => {
     const now = Date.now();
@@ -500,7 +599,7 @@ export default function FruitNinja() {
     setSlashTrails([{ points: [{ x: mouseX, y: mouseY }], timestamp: Date.now() }]);
   }, [gameStarted, gameOver, canvasSize]);
 
-  // Delegate session when game starts
+  // Delegate session when game starts with toast notifications
   const startGame = useCallback(async () => {
     if (!publicKey || !signTransaction || !sendTransaction) {
       alert('Please connect your wallet first');
@@ -510,26 +609,33 @@ export default function FruitNinja() {
     setIsProcessingBlockchain(true);
     setSessionError(null);
 
+    const toastId = addToast('Starting game session...', 'processing');
+
     try {
       const program = getProvider(publicKey, signTransaction, sendTransaction);
       if (!program) throw new Error('Failed to get program provider');
 
-      // Check if session is already delegated
-      if (!isSessionDelegated) {
+      // Check if session is already delegated using the service function
+      const isDelegated = await checkSessionDelegated(program, publicKey);
+      
+      if (!isDelegated) {
         console.log('Delegating session...');
-        await delegateSession(program, publicKey);
+        const signature = await delegateSession(program, publicKey);
         setIsSessionDelegated(true);
         console.log('✅ Session delegated successfully');
+        updateToast(toastId, 'Game session started!', 'success', signature);
       } else {
         console.log('Session already delegated, starting game...');
+        setIsSessionDelegated(true);
+        updateToast(toastId, 'Game session resumed!', 'success');
       }
 
       // Start the game
       setGameStarted(true);
       setGameOver(false);
       
-      // If session is already delegated, preserve existing score and lives
-      if (!isSessionDelegated) {
+      // If session wasn't previously delegated, reset game state
+      if (!isDelegated) {
         setScore(0);
         setLives(5);
       }
@@ -542,82 +648,59 @@ export default function FruitNinja() {
       setMultiplier(1);
     } catch (error) {
       console.error('Error starting game:', error);
-      setSessionError(`Failed to start game: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setSessionError(`Failed to start game: ${errorMessage}`);
+      updateToast(toastId, `Failed to start game: ${errorMessage}`, 'error');
     } finally {
       setIsProcessingBlockchain(false);
     }
-  }, [publicKey, signTransaction, sendTransaction, isSessionDelegated]);
+  }, [publicKey, signTransaction, sendTransaction, addToast, updateToast]);
 
-  // End game and undelegate session
+  // End game function
   const endGame = useCallback(async () => {
     setShowScoreScreen(true);
   }, []);
 
-  // New function to handle undelegation when viewing score
-  const handleViewScore = useCallback(async () => {
-    if (!publicKey || !signTransaction || !sendTransaction || !isSessionDelegated) {
-      setShowScoreScreen(false);
-      setShowFinalScore(true);
-      return;
-    }
-
-    setIsProcessingBlockchain(true);
-    try {
-      const program = getProvider(publicKey, signTransaction, sendTransaction);
-      if (!program) throw new Error('Failed to get program provider');
-
-      console.log('Undelegating session...');
-      
-      // Note: You'll need to provide the actual magicContext and magicProgram PublicKeys
-      // For now, using placeholder - replace with actual values
-      const magicContext = publicKey; // Replace with actual magic context
-      const magicProgram = publicKey;  // Replace with actual magic program
-      
-      await undelegateSession(program, publicKey);
-      
-      setIsSessionDelegated(false);
-      console.log('✅ Session undelegated successfully');
-      
-      setShowScoreScreen(false);
-      setShowFinalScore(true);
-    } catch (error) {
-      console.error('Error undelegating session:', error);
-      setSessionError(`Failed to undelegate session: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      // Still show final score screen even if undelegation fails
-      setShowScoreScreen(false);
-      setShowFinalScore(true);
-    } finally {
-      setIsProcessingBlockchain(false);
-    }
-  }, [publicKey, signTransaction, sendTransaction, isSessionDelegated]);
-
-  // New function to handle back to home and end session
-  const handleBackHome = useCallback(async () => {
+  // Simplified function to handle ending game and going home with toast notifications
+  const handleEndAndGoHome = useCallback(async () => {
     if (!publicKey || !signTransaction || !sendTransaction) {
       router.push('/');
       return;
     }
 
     setIsProcessingBlockchain(true);
+    const toastId = addToast('Ending game session...', 'processing');
+
     try {
       const program = getProvider(publicKey, signTransaction, sendTransaction);
       if (!program) throw new Error('Failed to get program provider');
 
-      console.log('Ending session...');
-      await blockchainEndSession(program, publicKey);
-      console.log('✅ Session ended successfully');
+      console.log('Ending session and undelegating...');
+      const signature = await blockchainEndSession(program, publicKey);
+      console.log('✅ Session ended and undelegated successfully');
       
-      // Redirect back to home
-      router.push('/');
+      updateToast(toastId, 'Game session ended successfully!', 'success', signature);
+      
+      // Save score to localStorage
+      saveScore(score);
+      
+      // Delay redirect to show toast
+      setTimeout(() => {
+        router.push('/');
+      }, 2000);
     } catch (error) {
       console.error('Error ending session:', error);
-      setSessionError(`Failed to end session: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setSessionError(`Failed to end session: ${errorMessage}`);
+      updateToast(toastId, `Failed to end session: ${errorMessage}`, 'error');
       // Still redirect even if ending fails
-      router.push('/');
+      setTimeout(() => {
+        router.push('/');
+      }, 3000);
     } finally {
       setIsProcessingBlockchain(false);
     }
-  }, [publicKey, signTransaction, sendTransaction, router]);
+  }, [publicKey, signTransaction, sendTransaction, router, score, addToast, updateToast]);
 
   const saveScore = useCallback((finalScore: number) => {
     try {
@@ -661,11 +744,11 @@ export default function FruitNinja() {
       if (score > bestScore) {
         setBestScore(score);
       }
-      // Don't auto end game anymore, just call endGame to show score screen
       endGame();
     }
   }, [gameOver, score, bestScore, saveScore, endGame]);
 
+  // Modified game loop with reduced spawn rates
   const gameLoop = useCallback(() => {
     if (!gameStarted || gameOver) return;
 
@@ -777,12 +860,12 @@ export default function FruitNinja() {
       prev.filter(trail => now - trail.timestamp < 300)
     );
 
-    // Spawn fruits and powerups
-    if (Math.random() < 0.025) {
+    // Reduced spawn rates
+    if (Math.random() < 0.015) { // Reduced from 0.025 to 0.015
       spawnFruit();
     }
 
-    if (Math.random() < 0.004) {
+    if (Math.random() < 0.002) { // Reduced from 0.004 to 0.002
       spawnPowerup();
     }
   }, [gameStarted, gameOver, spawnFruit, spawnPowerup, getTimeMultiplier, canvasSize, handleLoseLifeBlockchain]);
@@ -811,66 +894,23 @@ export default function FruitNinja() {
     };
   }, [gameStarted, gameOver, gameLoop]);
 
-  // Helper function to check if session is actually delegated
-  const checkSessionDelegated = useCallback(async (): Promise<boolean> => {
-    if (!publicKey || !signTransaction || !sendTransaction) return false;
-
-    try {
-      const program = getProvider(publicKey, signTransaction, sendTransaction);
-      if (!program) return false;
-
-      // Derive delegation-related PDAs to check if they exist
-      const [sessionPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("session"), publicKey.toBuffer()],
-        program.programId
-      );
-
-      const [bufferSessionPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("buffer"), sessionPda.toBuffer()],
-        new PublicKey("BLCzHNMKKgDiawL1iNXozxstgrXLSNBrCvnrBewnDvdf") // BUFFER_PROGRAM
-      );
-
-      // Try to fetch the buffer account to see if delegation exists
-      const bufferAccount = await program.provider.connection.getAccountInfo(bufferSessionPda);
-      return bufferAccount !== null;
-    } catch (error) {
-      console.error('Error checking delegation status:', error);
-      return false;
-    }
-  }, [publicKey, signTransaction, sendTransaction]);
-
-  // Update the initial check
-  useEffect(() => {
-    const checkDelegationStatus = async () => {
-      if (!publicKey || !signTransaction || !sendTransaction) return;
-
-      try {
-        const program = getProvider(publicKey, signTransaction, sendTransaction);
-        if (!program) return;
-
-        const session = await fetchGameSession(program, publicKey);
-        if (session && session.isActive) {
-          // Check if session is actually delegated
-          const isDelegated = await checkSessionDelegated();
-          setIsSessionDelegated(isDelegated);
-          setScore(session.currentScore?.toNumber() || 0);
-          setLives(session.lives || 5);
-          console.log('Session status - Active:', session.isActive, 'Delegated:', isDelegated);
-        }
-      } catch (error) {
-        console.error('Error checking session status:', error);
-      }
-    };
-
-    checkDelegationStatus();
-  }, [publicKey, signTransaction, sendTransaction, checkSessionDelegated]);
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-100 via-gray-200 to-gray-300 p-4">
-      <BackgroundElements />
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      {/* Subtle background pattern */}
+      <div className="absolute inset-0 opacity-5">
+        <svg width="60" height="60" viewBox="0 0 60 60" className="absolute inset-0 w-full h-full">
+          <pattern id="pattern" x="0" y="0" width="60" height="60" patternUnits="userSpaceOnUse">
+            <circle cx="30" cy="30" r="1" fill="currentColor"/>
+          </pattern>
+          <rect width="100%" height="100%" fill="url(#pattern)"/>
+        </svg>
+      </div>
+      
+      {/* Toast Container */}
+      <ToastContainer toasts={toasts} removeToast={removeToast} />
 
-      <div className="flex items-center justify-center min-h-screen relative z-10">
-        <div ref={containerRef} className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-2xl p-6 w-full max-w-6xl border border-gray-300">
+      <div className="flex items-center justify-center min-h-screen relative z-10 p-4">
+        <div ref={containerRef} className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-xl p-8 w-full max-w-6xl border border-white/50">
           
           <GameHeader 
             score={score} 
@@ -881,47 +921,60 @@ export default function FruitNinja() {
           
           <PowerupsDisplay activePowerups={activePowerups} />
 
-          {/* Session Status Display */}
-          <div className="mb-4 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {isSessionDelegated ? (
-                <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
-                  🟢 Session Active
-                </span>
-              ) : (
-                <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm font-medium">
-                  🟡 Session Inactive
-                </span>
-              )}
+          {/* Clean Session Status */}
+          <div className="mb-6 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium ${
+                isSessionDelegated 
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                  : 'bg-amber-50 text-amber-700 border border-amber-200'
+              }`}>
+                <div className={`w-2 h-2 rounded-full ${
+                  isSessionDelegated ? 'bg-emerald-500' : 'bg-amber-500'
+                }`}></div>
+                {isSessionDelegated ? 'Session Active' : 'Session Inactive'}
+              </div>
               
               {isProcessingBlockchain && (
-                <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
-                  🔄 Processing...
-                </span>
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                  <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+                  Processing...
+                </div>
               )}
             </div>
 
-            {gameStarted && isSessionDelegated && !showScoreScreen && !showFinalScore && (
+            {gameStarted && isSessionDelegated && !showScoreScreen && (
               <button
                 onClick={endGame}
                 disabled={isProcessingBlockchain}
-                className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {isProcessingBlockchain ? 'Ending...' : 'End Game'}
               </button>
             )}
           </div>
 
-          {/* Error Display */}
+          {/* Clean Error Display */}
           {sessionError && (
-            <div className="mb-4 bg-red-100 border border-red-300 text-red-800 px-4 py-2 rounded-lg">
-              {sessionError}
-              <button 
-                onClick={() => setSessionError(null)}
-                className="ml-2 text-red-600 hover:text-red-800"
-              >
-                ✕
-              </button>
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0">
+                  <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center">
+                    <span className="text-xs font-medium text-red-600">!</span>
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-red-900">Error</p>
+                  <p className="text-sm text-red-700 mt-1">{sessionError}</p>
+                </div>
+                <button 
+                  onClick={() => setSessionError(null)}
+                  className="flex-shrink-0 p-1 hover:bg-red-100 rounded transition-colors"
+                >
+                  <span className="sr-only">Dismiss</span>
+                  <span className="text-xs text-red-600">✕</span>
+                </button>
+              </div>
             </div>
           )}
 
@@ -943,14 +996,14 @@ export default function FruitNinja() {
               onTouchEnd={handleMouseUp}
             />
 
-            {!gameStarted && !showScoreScreen && !showFinalScore && (
+            {!gameStarted && !showScoreScreen && (
               <GameStartOverlay 
                 onStartGame={startGame} 
                 isProcessing={isProcessingBlockchain}
               />
             )}
 
-            {gameOver && !showScoreScreen && !showFinalScore && (
+            {gameOver && !showScoreScreen && (
               <GameOverOverlay 
                 score={score} 
                 onPlayAgain={startGame}
@@ -958,20 +1011,10 @@ export default function FruitNinja() {
               />
             )}
 
-            {/* Score Screen */}
             {showScoreScreen && (
               <ScoreScreen
                 score={score}
-                onViewScore={handleViewScore}
-                isProcessing={isProcessingBlockchain}
-              />
-            )}
-
-            {/* Final Score Screen */}
-            {showFinalScore && (
-              <FinalScoreScreen
-                score={score}
-                onBackHome={handleBackHome}
+                onEndAndGoHome={handleEndAndGoHome}
                 isProcessing={isProcessingBlockchain}
               />
             )}

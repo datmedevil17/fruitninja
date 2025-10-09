@@ -1,14 +1,28 @@
 'use client'
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { fetchProfile, getProvider, fetchConfig } from '@/services'
 import Link from 'next/link'
 
+// Define proper types
+interface UserProfile {
+  username: string;
+  highScore?: number;
+  // Add other profile properties as needed
+}
+
+interface GameConfig {
+  maxLives: number;
+  maxPointsPerFruit?: number;
+  leaderboardCapacity: number;
+  // Add other config properties as needed
+}
+
 export default function Header() {
   const [isMounted, setIsMounted] = useState(false)
-  const [userProfile, setUserProfile] = useState<any>(null)
-  const [gameConfig, setGameConfig] = useState<any>(null)
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
+  const [gameConfig, setGameConfig] = useState<GameConfig | null>(null)
   const [isLoadingProfile, setIsLoadingProfile] = useState(false)
   const [isLoadingConfig, setIsLoadingConfig] = useState(false)
   const { publicKey, signTransaction, sendTransaction } = useWallet()
@@ -30,7 +44,21 @@ export default function Header() {
         }
 
         const config = await fetchConfig(program)
-        setGameConfig(config)
+        // Ensure config is not null and required fields are present
+        if (
+          config &&
+          typeof config.maxLives === 'number' &&
+          typeof config.leaderboardCapacity === 'number'
+        ) {
+          setGameConfig({
+            maxLives: config.maxLives,
+            leaderboardCapacity: config.leaderboardCapacity,
+            maxPointsPerFruit: config.maxPointsPerFruit ? Number(config.maxPointsPerFruit) : undefined
+            // Add other properties as needed, ensuring required fields are present
+          })
+        } else {
+          setGameConfig(null)
+        }
       } catch (error) {
         console.error('Error fetching game config:', error)
         setGameConfig(null)

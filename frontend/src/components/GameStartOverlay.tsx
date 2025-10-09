@@ -1,37 +1,35 @@
-import React from 'react';
-
-import { GameStartOverlayProps } from '@/types/game';
+interface GameStartOverlayProps {
+  onStartGame: () => void;
+  isProcessing: boolean;
+}
 
 export default function GameStartOverlay({ onStartGame, isProcessing = false }: GameStartOverlayProps) {
   return (
-    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center rounded-2xl">
-      <div className="text-center p-6 bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl border border-gray-300 max-w-md mx-4">
-        <div className="text-5xl mb-4 animate-bounce">⚔️</div>
-        <h2 className="text-3xl font-black text-gray-800 mb-4">
-          Ready to Slice?
-        </h2>
-        <div className="text-gray-600 mb-6 space-y-3">
-          <p className="font-medium">🎯 Slice fruits by dragging across them!</p>
-          <p className="font-medium">❤️ Don&apos;t let fruits fall off the screen!</p>
-          
-          <div className="bg-gray-50 rounded-2xl p-4 mt-4 border border-gray-200">
-            <div className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wider">Powerups</div>
-            <div className="grid grid-cols-2 gap-3 text-sm">
+    <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center rounded-2xl">
+      <div className="text-center p-8 bg-white/95 backdrop-blur-sm rounded-2xl shadow-xl border border-white/50 max-w-md mx-4">
+        <div className="mb-6">
+          <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <span className="text-3xl">⚔️</span>
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Ready to Play?</h2>
+          <p className="text-slate-600">Slice fruits and collect powerups to earn points!</p>
+        </div>
+
+        <div className="space-y-4 mb-6">
+          <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+            <h3 className="text-sm font-semibold text-slate-700 mb-3">How to Play</h3>
+            <div className="space-y-2 text-sm text-slate-600">
               <div className="flex items-center gap-2">
-                <span>⏰</span>
-                <span className="font-medium text-gray-700">Slow Motion</span>
+                <span>🎯</span>
+                <span>Drag to slice fruits</span>
               </div>
               <div className="flex items-center gap-2">
-                <span>💎</span>
-                <span className="font-medium text-gray-700">Double Points</span>
+                <span>❤️</span>
+                <span>Don&apos;t let fruits fall</span>
               </div>
               <div className="flex items-center gap-2">
-                <span>💣</span>
-                <span className="font-medium text-gray-700">Bomb All</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span>❄️</span>
-                <span className="font-medium text-gray-700">Freeze Time</span>
+                <span>⚡</span>
+                <span>Collect powerups for bonuses</span>
               </div>
             </div>
           </div>
@@ -40,15 +38,15 @@ export default function GameStartOverlay({ onStartGame, isProcessing = false }: 
         <button
           onClick={onStartGame}
           disabled={isProcessing}
-          className="bg-gray-800 hover:bg-gray-900 text-white font-bold py-4 px-8 rounded-2xl text-lg transition-all duration-300 transform hover:scale-105 hover:shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+          className="w-full bg-slate-900 text-white py-3 px-6 rounded-lg font-medium hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {isProcessing ? (
-            <span className="flex items-center gap-2">
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              Starting Game...
+            <span className="flex items-center justify-center gap-2">
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+              Starting...
             </span>
           ) : (
-            '🚀 Start Slicing!'
+            'Start Game'
           )}
         </button>
       </div>

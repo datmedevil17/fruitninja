@@ -1,5 +1,5 @@
 'use client'
-import React, { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 import type {  
   GameCanvasProps 
 } from '../types/game';
