@@ -1,5 +1,3 @@
-
-
 // Providers
 export { getProvider, getProviderReadonly } from './providers/anchorProvider';
 
@@ -25,13 +23,12 @@ export {
   undelegateAndEndSession, 
   sliceFruit,
   loseLife,
-  
-} from './session/sessionService';
-
-// Session Delegation
-export { 
-  delegateSession, undelegateSession
-
+  delegateSession,
+  undelegateSession,
+  checkSessionDelegated,
+  getActiveSessionInfo,
+  getConfigInfo,
+  logAllSessionAndConfigInfo
 } from './session/sessionService';
 
 // Game Actions

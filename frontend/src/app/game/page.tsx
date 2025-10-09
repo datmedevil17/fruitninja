@@ -573,7 +573,7 @@ export default function FruitNinja() {
       const magicContext = publicKey; // Replace with actual magic context
       const magicProgram = publicKey;  // Replace with actual magic program
       
-      await undelegateSession(program, publicKey, magicContext, magicProgram);
+      await undelegateSession(program, publicKey);
       
       setIsSessionDelegated(false);
       console.log('✅ Session undelegated successfully');

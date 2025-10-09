@@ -307,39 +307,31 @@ export const undelegateAndEndSession = async (
 
   const delegated = !sessionInfo.owner.equals(program.programId);
 
-  // If delegated, undelegate first
+  // If delegated, undelegate first using PLAYER's wallet
   if (delegated) {
-    console.log("Session is delegated. Undelegating first...");
+    console.log("Session is delegated. Undelegating with player wallet...");
 
+    // Derive magic context (same as before, but we won't sign with it)
     const tempSeed = playerPublicKey.toBytes();
     const tempKeypair = Keypair.fromSeed(tempSeed);
     const magicContext = tempKeypair.publicKey;
     const magicProgram = new PublicKey("MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57");
-    const ephemeralConnection = new Connection(MAGICBLOCK_RPC, { commitment: "confirmed" });
 
-    const tx = await program.methods
+    // Use PLAYER's wallet to undelegate (not ephemeral)
+    const undelegateTx = await program.methods
       .undelegateSession()
       .accountsPartial({
-        payer: tempKeypair.publicKey,
+        payer: program.provider.publicKey, // PLAYER wallet pays
         session: sessionPda,
         magicContext,
         magicProgram,
       })
-      .transaction();
+      .rpc({ commitment: "confirmed" });
 
-    const { value: { blockhash, lastValidBlockHeight } } =
-      await ephemeralConnection.getLatestBlockhashAndContext();
-
-    tx.recentBlockhash = blockhash;
-    tx.feePayer = tempKeypair.publicKey;
-
-    tx.sign(tempKeypair);
-
-    const raw = tx.serialize();
-    const signature = await ephemeralConnection.sendRawTransaction(raw, { skipPreflight: true });
-
-    await ephemeralConnection.confirmTransaction({ blockhash, lastValidBlockHeight, signature }, "confirmed");
-    console.log("✅ Session undelegated (ephemeral):", signature);
+    console.log("✅ Session undelegated (wallet-signed):", undelegateTx);
+    
+    // Wait a moment for state to settle
+    await new Promise(resolve => setTimeout(resolve, 1000));
   }
 
   // Now ownership is back to your program — safe to call endSession
@@ -442,3 +434,226 @@ export const checkActiveSession = async (
 // const program = ...; // your initialized program instance
 // const playerPublicKey = ...; // player's public key
 
+/**
+ * checkSessionDelegated: checks if a session is currently delegated
+ */
+export const checkSessionDelegated = async (
+  program: Program<Fruitninja>,
+  playerPublicKey: PublicKey
+): Promise<boolean> => {
+  try {
+    const [sessionPda] = getSessionPda(program.programId, playerPublicKey);
+    
+    const accountInfo = await program.provider.connection.getAccountInfo(sessionPda);
+    if (!accountInfo) {
+      console.log("❌ No session account found");
+      return false;
+    }
+
+    // If account owner is not the program, it's delegated
+    const isDelegated = !accountInfo.owner.equals(program.programId);
+    
+    console.log("🔍 Session delegation status:", {
+      sessionPda: sessionPda.toBase58(),
+      accountOwner: accountInfo.owner.toBase58(),
+      programId: program.programId.toBase58(),
+      isDelegated
+    });
+
+    return isDelegated;
+  } catch (error) {
+    console.error("Error checking delegation status:", error);
+    return false;
+  }
+};
+
+/**
+ * getActiveSessionInfo: gets detailed info about active session and delegation status
+ */
+export const getActiveSessionInfo = async (
+  program: Program<Fruitninja>,
+  playerPublicKey: PublicKey
+): Promise<{
+  hasActiveSession: boolean;
+  isDelegated: boolean;
+  sessionData: any | null;
+  delegationInfo: any;
+}> => {
+  try {
+    const [sessionPda] = getSessionPda(program.programId, playerPublicKey);
+    
+    // Check if session account exists
+    const accountInfo = await program.provider.connection.getAccountInfo(sessionPda);
+    if (!accountInfo) {
+      console.log("❌ No session found for player:", playerPublicKey.toBase58());
+      return {
+        hasActiveSession: false,
+        isDelegated: false,
+        sessionData: null,
+        delegationInfo: { accountExists: false }
+      };
+    }
+
+    // Fetch session data
+    const sessionData = await program.account.gameSession.fetch(sessionPda);
+    const isDelegated = !accountInfo.owner.equals(program.programId);
+    
+    const delegationInfo: {
+      accountExists: boolean;
+      accountOwner: string;
+      programId: string;
+      isDelegated: boolean;
+      sessionPda: string;
+      bufferAccount?: {
+        pda: string;
+        exists: boolean;
+      };
+    } = {
+      accountExists: true,
+      accountOwner: accountInfo.owner.toBase58(),
+      programId: program.programId.toBase58(),
+      isDelegated,
+      sessionPda: sessionPda.toBase58()
+    };
+
+    // Check for delegation-related PDAs
+    if (isDelegated) {
+      try {
+        const [bufferSessionPda] = PublicKey.findProgramAddressSync(
+          [Buffer.from("buffer"), sessionPda.toBuffer()],
+          new PublicKey("BLCzHNMKKgDiawL1iNXozxstgrXLSNBrCvnrBewnDvdf") // BUFFER_PROGRAM
+        );
+        
+        const bufferAccount = await program.provider.connection.getAccountInfo(bufferSessionPda);
+        delegationInfo.bufferAccount = {
+          pda: bufferSessionPda.toBase58(),
+          exists: bufferAccount !== null
+        };
+      } catch (error) {
+        console.warn("Error checking buffer account:", error);
+      }
+    }
+
+    console.log("📊 Active Session Info:", {
+      player: playerPublicKey.toBase58(),
+      hasActiveSession: sessionData.isActive,
+      isDelegated,
+      sessionData: {
+        currentScore: sessionData.currentScore?.toString(),
+        combo: sessionData.combo,
+        lives: sessionData.lives,
+        isActive: sessionData.isActive,
+        fruitsSliced: sessionData.fruitsSliced?.toString(),
+        maxCombo: sessionData.maxCombo
+      },
+      delegationInfo
+    });
+
+    return {
+      hasActiveSession: sessionData.isActive,
+      isDelegated,
+      sessionData,
+      delegationInfo
+    };
+  } catch (error) {
+    console.error("Error getting session info:", error);
+    return {
+      hasActiveSession: false,
+      isDelegated: false,
+      sessionData: null,
+      delegationInfo: { error: String(error) }
+    };
+  }
+};
+
+/**
+ * getConfigInfo: fetches and logs all game configuration details
+ */
+export const getConfigInfo = async (program: Program<Fruitninja>): Promise<any> => {
+  try {
+    const [configPda] = getConfigPda(program.programId);
+    
+    console.log("🔍 Fetching config from PDA:", configPda.toBase58());
+    
+    const config = await program.account.gameConfig.fetch(configPda);
+    
+    const configInfo = {
+      pda: configPda.toBase58(),
+      admin: config.admin.toBase58(),
+      maxLives: config.maxLives,
+      maxPointsPerFruit: config.maxPointsPerFruit?.toString(),
+      comboMultiplierBase: config.comboMultiplierBase?.toString(),
+      leaderboardCapacity: config.leaderboardCapacity,
+      bump: config.bump,
+      leaderboard: config.leaderboard?.map((entry: any, index: number) => ({
+        rank: index + 1,
+        player: entry.player.toBase58(),
+        score: entry.score?.toString(),
+        timestamp: new Date(entry.timestamp * 1000).toISOString()
+      })) || []
+    };
+
+    console.log("⚙️ Game Configuration:", configInfo);
+    console.log("🏆 Leaderboard Entries:", configInfo.leaderboard.length);
+    
+    if (configInfo.leaderboard.length > 0) {
+      console.table(configInfo.leaderboard);
+    }
+
+    return configInfo;
+  } catch (error) {
+    console.error("❌ Error fetching config:", error);
+    
+    // Try to check if config account exists
+    try {
+      const [configPda] = getConfigPda(program.programId);
+      const accountInfo = await program.provider.connection.getAccountInfo(configPda);
+      
+      if (!accountInfo) {
+        console.log("❌ Config account does not exist. Need to initialize config first.");
+      } else {
+        console.log("✅ Config account exists but failed to deserialize:", {
+          pda: configPda.toBase58(),
+          owner: accountInfo.owner.toBase58(),
+          dataLength: accountInfo.data.length
+        });
+      }
+    } catch (innerError) {
+      console.error("Error checking config account:", innerError);
+    }
+    
+    throw error;
+  }
+};
+
+/**
+ * logAllSessionAndConfigInfo: comprehensive logging function
+ */
+export const logAllSessionAndConfigInfo = async (
+  program: Program<Fruitninja>,
+  playerPublicKey: PublicKey
+): Promise<void> => {
+  console.log("\n" + "=".repeat(50));
+  console.log("📋 FRUIT NINJA SESSION & CONFIG REPORT");
+  console.log("=".repeat(50));
+  
+  try {
+    // Get config info
+    console.log("\n🔧 CONFIGURATION INFO:");
+    await getConfigInfo(program);
+    
+    // Get session info
+    console.log("\n🎮 SESSION INFO:");
+    await getActiveSessionInfo(program, playerPublicKey);
+    
+    // Additional delegation checks
+    console.log("\n🔗 DELEGATION STATUS:");
+    const isDelegated = await checkSessionDelegated(program, playerPublicKey);
+    console.log(`Session is ${isDelegated ? 'DELEGATED' : 'NOT DELEGATED'}`);
+    
+  } catch (error) {
+    console.error("❌ Error in comprehensive report:", error);
+  }
+  
+  console.log("=".repeat(50) + "\n");
+};
