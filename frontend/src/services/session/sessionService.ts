@@ -7,10 +7,10 @@ import {
   SystemProgram,
   Transaction,
   TransactionSignature,
-sendAndConfirmTransaction
+  sendAndConfirmTransaction,
 } from "@solana/web3.js";
 import type { Fruitninja } from "../fruitninja";
-import { OWNER_PROGRAM,DELEGATION_PROGRAM } from "../constants/programs";
+import { OWNER_PROGRAM, DELEGATION_PROGRAM } from "../constants/programs";
 import { MAGICBLOCK_RPC } from "@/utils/helpers";
 
 // Type definitions
@@ -100,25 +100,31 @@ export const fetchGameSession = async (
 ): Promise<GameSession | null> => {
   try {
     const [sessionPda] = getSessionPda(program.programId, playerPublicKey);
-    
+
     // Check if account exists first
-    const accountInfo = await program.provider.connection.getAccountInfo(sessionPda);
+    const accountInfo = await program.provider.connection.getAccountInfo(
+      sessionPda
+    );
     if (!accountInfo) {
       return null;
     }
 
     // Fetch the session data
-    const session = await program.account.gameSession.fetch(sessionPda) as unknown as GameSession;
-    
+    const session = (await program.account.gameSession.fetch(
+      sessionPda
+    )) as unknown as GameSession;
+
     return {
       ...session,
       sessionPda: sessionPda.toBase58(),
-      isDelegated: !accountInfo.owner.equals(program.programId)
+      isDelegated: !accountInfo.owner.equals(program.programId),
     };
   } catch (err: unknown) {
     // Handle account not found errors
-    if (String(err).includes("Account does not exist") || 
-        String(err).includes("AccountNotFound")) {
+    if (
+      String(err).includes("Account does not exist") ||
+      String(err).includes("AccountNotFound")
+    ) {
       return null;
     }
     throw err;
@@ -128,15 +134,22 @@ export const fetchGameSession = async (
 /**
  * Helper: derive PDAs used by program
  */
-export const getSessionPda = (programId: PublicKey, player: PublicKey): [PublicKey, number] =>
-  PublicKey.findProgramAddressSync([Buffer.from("session"), player.toBuffer()], programId);
+export const getSessionPda = (
+  programId: PublicKey,
+  player: PublicKey
+): [PublicKey, number] =>
+  PublicKey.findProgramAddressSync(
+    [Buffer.from("session"), player.toBuffer()],
+    programId
+  );
 
 export const getConfigPda = (programId: PublicKey): [PublicKey, number] =>
   PublicKey.findProgramAddressSync([Buffer.from("config")], programId);
 
-
-
-export const startGameSession = async (program: Program<Fruitninja>, player: PublicKey): Promise<string> => {
+export const startGameSession = async (
+  program: Program<Fruitninja>,
+  player: PublicKey
+): Promise<string> => {
   if (!program.provider.publicKey) throw new Error("Wallet not connected");
 
   const [sessionPda] = getSessionPda(program.programId, player);
@@ -144,11 +157,17 @@ export const startGameSession = async (program: Program<Fruitninja>, player: Pub
 
   // Check existing session
   try {
-    const existingSession = await program.account.gameSession.fetch(sessionPda) as unknown as GameSession;
-    if (existingSession.isActive) throw new Error("Player already has an active session");
+    const existingSession = (await program.account.gameSession.fetch(
+      sessionPda
+    )) as unknown as GameSession;
+    if (existingSession.isActive)
+      throw new Error("Player already has an active session");
   } catch (err: unknown) {
     // Anchor throws when account doesn't exist — that's ok for initializing
-    if (!String(err).includes("Account does not exist") && !String(err).includes("AccountNotFound")) {
+    if (
+      !String(err).includes("Account does not exist") &&
+      !String(err).includes("AccountNotFound")
+    ) {
       throw err;
     }
   }
@@ -184,7 +203,9 @@ export const delegateSession = async (
   const [sessionPda] = getSessionPda(program.programId, player);
 
   // Ensure session exists and active
-  const sessionInfo = await program.provider.connection.getAccountInfo(sessionPda);
+  const sessionInfo = await program.provider.connection.getAccountInfo(
+    sessionPda
+  );
   if (!sessionInfo) throw new Error("Session not initialized");
   const session = await program.account.gameSession.fetch(sessionPda);
   if (!session.isActive) throw new Error("Session is not active");
@@ -253,8 +274,11 @@ export const sliceFruit = async (
   }
 
   // Check account ownership to detect delegation (owner != program id indicates delegated)
-  const accountInfo = await program.provider.connection.getAccountInfo(sessionPda);
-  const delegated = !!accountInfo && !accountInfo.owner.equals(program.programId);
+  const accountInfo = await program.provider.connection.getAccountInfo(
+    sessionPda
+  );
+  const delegated =
+    !!accountInfo && !accountInfo.owner.equals(program.programId);
 
   if (delegated) {
     // UNSAFE: derive temp keypair deterministically from wallet public key bytes (devnet-only)
@@ -262,7 +286,9 @@ export const sliceFruit = async (
     const tempKeypair = Keypair.fromSeed(tempSeed);
 
     // Use MagicBlock ephemeral RPC
-    const ephemeralConnection = new Connection(MAGICBLOCK_RPC, { commitment: "confirmed" });
+    const ephemeralConnection = new Connection(MAGICBLOCK_RPC, {
+      commitment: "confirmed",
+    });
 
     // Build transaction (unsigned) via Anchor
     const tx: Transaction = await program.methods
@@ -275,7 +301,7 @@ export const sliceFruit = async (
 
     // Fill recent blockhash & fee payer from ephemeral RPC
     const {
-      value: { blockhash, lastValidBlockHeight }
+      value: { blockhash, lastValidBlockHeight },
     } = await ephemeralConnection.getLatestBlockhashAndContext();
 
     tx.recentBlockhash = blockhash;
@@ -286,8 +312,13 @@ export const sliceFruit = async (
 
     // send raw to MagicBlock RPC
     const raw = tx.serialize();
-    const signature = await ephemeralConnection.sendRawTransaction(raw, { skipPreflight: true });
-    await ephemeralConnection.confirmTransaction({ blockhash, lastValidBlockHeight, signature }, "confirmed");
+    const signature = await ephemeralConnection.sendRawTransaction(raw, {
+      skipPreflight: true,
+    });
+    await ephemeralConnection.confirmTransaction(
+      { blockhash, lastValidBlockHeight, signature },
+      "confirmed"
+    );
 
     console.log("✅ Fruit sliced (ephemeral):", signature);
     return signature;
@@ -325,14 +356,19 @@ export const loseLife = async (
     throw new Error("No active game session found");
   }
 
-  const accountInfo = await program.provider.connection.getAccountInfo(sessionPda);
-  const delegated = !!accountInfo && !accountInfo.owner.equals(program.programId);
+  const accountInfo = await program.provider.connection.getAccountInfo(
+    sessionPda
+  );
+  const delegated =
+    !!accountInfo && !accountInfo.owner.equals(program.programId);
 
   if (delegated) {
     // Ephemeral transaction path
     const tempSeed = playerPublicKey.toBytes();
     const tempKeypair = Keypair.fromSeed(tempSeed); // Must be 32 bytes
-    const ephemeralConnection = new Connection(MAGICBLOCK_RPC, { commitment: "confirmed" });
+    const ephemeralConnection = new Connection(MAGICBLOCK_RPC, {
+      commitment: "confirmed",
+    });
 
     const tx: Transaction = await program.methods
       .loseLife()
@@ -342,15 +378,22 @@ export const loseLife = async (
       .transaction();
 
     // Fetch latest blockhash right before sending
-    const { blockhash } = await ephemeralConnection.getLatestBlockhash("finalized");
+    const { blockhash } = await ephemeralConnection.getLatestBlockhash(
+      "finalized"
+    );
     tx.recentBlockhash = blockhash;
     tx.feePayer = tempKeypair.publicKey;
     tx.sign(tempKeypair);
 
     // Send & confirm transaction safely
-    const signature = await sendAndConfirmTransaction(ephemeralConnection, tx, [tempKeypair], {
-      commitment: "confirmed",
-    });
+    const signature = await sendAndConfirmTransaction(
+      ephemeralConnection,
+      tx,
+      [tempKeypair],
+      {
+        commitment: "confirmed",
+      }
+    );
 
     console.log("✅ Life lost (ephemeral):", signature);
     return signature;
@@ -373,7 +416,7 @@ export const loseLife = async (
  */
 /**
  * undelegateAndEndSession: Properly handle delegated sessions
- * 
+ *
  * When a session is delegated:
  * 1. Call undelegateSession() via ephemeral RPC (uses temp keypair)
  * 2. Poll for account ownership to be restored
@@ -381,7 +424,7 @@ export const loseLife = async (
  */
 /**
  * undelegateAndEndSession: Properly handle delegated sessions
- * 
+ *
  * When a session is delegated:
  * 1. Call undelegateSession() to undelegate from ER
  * 2. Wait for confirmation and account ownership restoration
@@ -389,7 +432,7 @@ export const loseLife = async (
  */
 /**
  * undelegateAndEndSession: Properly handle delegated sessions
- * 
+ *
  * CRITICAL: When delegated, the session is owned by DELEGATION_PROGRAM.
  * You MUST undelegate via ER connection FIRST, then end via base connection.
  */
@@ -403,55 +446,71 @@ export const undelegateAndEndSession = async (
   const [configPda] = getConfigPda(program.programId);
 
   // Fetch current session account
-  const sessionInfo = await program.provider.connection.getAccountInfo(sessionPda);
+  const sessionInfo = await program.provider.connection.getAccountInfo(
+    sessionPda
+  );
   if (!sessionInfo) throw new Error("Session not initialized");
 
   const delegated = !sessionInfo.owner.equals(program.programId);
 
   // 🧩 Step 1: If delegated, undelegate using EPHEMERAL RPC (like sample's endParty)
   if (delegated) {
-    console.log("Session is delegated. Undelegating via ephemeral connection...");
-    
+    console.log(
+      "Session is delegated. Undelegating via ephemeral connection..."
+    );
+
     // Create ephemeral connection and provider
-    const ephemeralConnection = new Connection(MAGICBLOCK_RPC, { 
-      commitment: "confirmed" 
+    const ephemeralConnection = new Connection(MAGICBLOCK_RPC, {
+      commitment: "confirmed",
     });
-    
+
     // Create temp keypair (same as your sliceFruit/loseLife pattern)
     const tempSeed = playerPublicKey.toBytes();
     const tempKeypair = Keypair.fromSeed(tempSeed);
-    
+
     // Create ephemeral provider with temp keypair
-    const ephemeralWallet = {
+    interface EphemeralWallet {
+      publicKey: PublicKey;
+      signTransaction: (tx: Transaction) => Promise<Transaction>;
+      signAllTransactions: (txs: Transaction[]) => Promise<Transaction[]>;
+    }
+
+    const ephemeralWallet: EphemeralWallet = {
       publicKey: tempKeypair.publicKey,
       signTransaction: async (tx: Transaction) => {
         tx.sign(tempKeypair);
         return tx;
       },
       signAllTransactions: async (txs: Transaction[]) => {
-        txs.forEach(tx => tx.sign(tempKeypair));
+        txs.forEach((tx) => tx.sign(tempKeypair));
         return txs;
       },
     };
-    
+
     const ephemeralProvider = new AnchorProvider(
       ephemeralConnection,
-      ephemeralWallet as any,
+      ephemeralWallet as unknown as AnchorProvider["wallet"],
       AnchorProvider.defaultOptions()
     );
-    
-    // Create program instance using ephemeral provider
-    const ephemeralProgram = new Program<Fruitninja>(
-  program.idl as any,
-  ephemeralProvider
-);
-    
-    // Use the correct Magic addresses
-    const magicProgram = new PublicKey("Magic11111111111111111111111111111111111111");
-    const magicContext = new PublicKey("MagicContext1111111111111111111111111111111");
 
-    console.log(`[undelegateSession] Undelegating session (waiting for confirmation)...`);
-    
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ephemeralProgram = new Program<Fruitninja>(
+      program.idl as Fruitninja,
+      ephemeralProvider
+    );
+
+    // Use the correct Magic addresses
+    const magicProgram = new PublicKey(
+      "Magic11111111111111111111111111111111111111"
+    );
+    const magicContext = new PublicKey(
+      "MagicContext1111111111111111111111111111111"
+    );
+
+    console.log(
+      `[undelegateSession] Undelegating session (waiting for confirmation)...`
+    );
+
     // Undelegate using ephemeral program with confirmed commitment
     const undelegateSignature = await ephemeralProgram.methods
       .undelegateSession()
@@ -459,15 +518,15 @@ export const undelegateAndEndSession = async (
         payer: tempKeypair.publicKey,
         session: sessionPda,
         magicContext: magicContext,
-        magicProgram: magicProgram
+        magicProgram: magicProgram,
       })
       .rpc({ commitment: "confirmed" });
 
     console.log("✅ Session undelegated:", undelegateSignature);
-    
+
     // Wait for undelegation to complete and ownership to restore
     console.log(`[undelegateSession] Waiting for ownership to restore...`);
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    await new Promise((resolve) => setTimeout(resolve, 3000));
   }
 
   // 🧩 Step 2: End session via normal provider (wallet-signed) using BASE program
@@ -477,7 +536,7 @@ export const undelegateAndEndSession = async (
   );
 
   console.log(`[endSession] Closing session (waiting for confirmation)...`);
-  
+
   const txSigEnd = await program.methods
     .endSession()
     .accountsPartial({
@@ -492,9 +551,6 @@ export const undelegateAndEndSession = async (
   return txSigEnd;
 };
 
-
-
-
 // const magicContext = tempKeypair.publicKey; // often a derived ephemeral account
 /**
  * undelegateSession: try minimal accounts first (payer + session). If that fails, fall back to magicContext/magicProgram placeholder.
@@ -508,7 +564,9 @@ export const undelegateSession = async (
 
   const [sessionPda] = getSessionPda(program.programId, playerPublicKey);
 
-  const sessionInfo = await program.provider.connection.getAccountInfo(sessionPda);
+  const sessionInfo = await program.provider.connection.getAccountInfo(
+    sessionPda
+  );
   if (!sessionInfo) throw new Error("Session not initialized");
 
   const delegated = !sessionInfo.owner.equals(program.programId);
@@ -517,8 +575,12 @@ export const undelegateSession = async (
   const tempSeed = playerPublicKey.toBytes();
   const tempKeypair = Keypair.fromSeed(tempSeed);
   const magicContext = tempKeypair.publicKey;
-  const magicProgram = new PublicKey("MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57");
-  const ephemeralConnection = new Connection(MAGICBLOCK_RPC, { commitment: "confirmed" });
+  const magicProgram = new PublicKey(
+    "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57"
+  );
+  const ephemeralConnection = new Connection(MAGICBLOCK_RPC, {
+    commitment: "confirmed",
+  });
 
   const tx = await program.methods
     .undelegateSession()
@@ -530,8 +592,9 @@ export const undelegateSession = async (
     })
     .transaction();
 
-  const { value: { blockhash, lastValidBlockHeight } } =
-    await ephemeralConnection.getLatestBlockhashAndContext();
+  const {
+    value: { blockhash, lastValidBlockHeight },
+  } = await ephemeralConnection.getLatestBlockhashAndContext();
 
   tx.recentBlockhash = blockhash;
   tx.feePayer = tempKeypair.publicKey;
@@ -539,8 +602,13 @@ export const undelegateSession = async (
   tx.sign(tempKeypair);
 
   const raw = tx.serialize();
-  const signature = await ephemeralConnection.sendRawTransaction(raw, { skipPreflight: true });
-  await ephemeralConnection.confirmTransaction({ blockhash, lastValidBlockHeight, signature }, "confirmed");
+  const signature = await ephemeralConnection.sendRawTransaction(raw, {
+    skipPreflight: true,
+  });
+  await ephemeralConnection.confirmTransaction(
+    { blockhash, lastValidBlockHeight, signature },
+    "confirmed"
+  );
 
   console.log("✅ Session undelegated (ephemeral):", signature);
   return signature;
@@ -568,29 +636,36 @@ export const getActiveSessionInfo = async (
 ): Promise<SessionInfo> => {
   try {
     const [sessionPda] = getSessionPda(program.programId, playerPublicKey);
-    
+
     // Check if session account exists
-    const accountInfo = await program.provider.connection.getAccountInfo(sessionPda);
+    const accountInfo = await program.provider.connection.getAccountInfo(
+      sessionPda
+    );
     if (!accountInfo) {
-      console.log("❌ No session found for player:", playerPublicKey.toBase58());
+      console.log(
+        "❌ No session found for player:",
+        playerPublicKey.toBase58()
+      );
       return {
         hasActiveSession: false,
         isDelegated: false,
         sessionData: null,
-        delegationInfo: { accountExists: false }
+        delegationInfo: { accountExists: false },
       };
     }
 
     // Fetch session data
-    const sessionData = await program.account.gameSession.fetch(sessionPda) as unknown as GameSession;
+    const sessionData = (await program.account.gameSession.fetch(
+      sessionPda
+    )) as unknown as GameSession;
     const isDelegated = !accountInfo.owner.equals(program.programId);
-    
+
     const delegationInfo: DelegationInfo = {
       accountExists: true,
       accountOwner: accountInfo.owner.toBase58(),
       programId: program.programId.toBase58(),
       isDelegated,
-      sessionPda: sessionPda.toBase58()
+      sessionPda: sessionPda.toBase58(),
     };
 
     // Check for delegation-related PDAs
@@ -600,11 +675,13 @@ export const getActiveSessionInfo = async (
           [Buffer.from("buffer"), sessionPda.toBuffer()],
           new PublicKey("BLCzHNMKKgDiawL1iNXozxstgrXLSNBrCvnrBewnDvdf") // BUFFER_PROGRAM
         );
-        
-        const bufferAccount = await program.provider.connection.getAccountInfo(bufferSessionPda);
+
+        const bufferAccount = await program.provider.connection.getAccountInfo(
+          bufferSessionPda
+        );
         delegationInfo.bufferAccount = {
           pda: bufferSessionPda.toBase58(),
-          exists: bufferAccount !== null
+          exists: bufferAccount !== null,
         };
       } catch (error) {
         console.warn("Error checking buffer account:", error);
@@ -617,7 +694,7 @@ export const getActiveSessionInfo = async (
       lives: sessionData.lives,
       isActive: sessionData.isActive,
       fruitsSliced: sessionData.fruitsSliced?.toString(),
-      maxCombo: sessionData.maxCombo
+      maxCombo: sessionData.maxCombo,
     };
 
     console.log("📊 Active Session Info:", {
@@ -625,14 +702,14 @@ export const getActiveSessionInfo = async (
       hasActiveSession: sessionData.isActive,
       isDelegated,
       sessionData: formattedSessionData,
-      delegationInfo
+      delegationInfo,
     });
 
     return {
       hasActiveSession: sessionData.isActive,
       isDelegated,
       sessionData,
-      delegationInfo
+      delegationInfo,
     };
   } catch (error) {
     console.error("Error getting session info:", error);
@@ -640,7 +717,7 @@ export const getActiveSessionInfo = async (
       hasActiveSession: false,
       isDelegated: false,
       sessionData: null,
-      delegationInfo: { accountExists: false, error: String(error) }
+      delegationInfo: { accountExists: false, error: String(error) },
     };
   }
 };
@@ -648,14 +725,18 @@ export const getActiveSessionInfo = async (
 /**
  * getConfigInfo: fetches and logs all game configuration details
  */
-export const getConfigInfo = async (program: Program<Fruitninja>): Promise<ConfigInfo> => {
+export const getConfigInfo = async (
+  program: Program<Fruitninja>
+): Promise<ConfigInfo> => {
   try {
     const [configPda] = getConfigPda(program.programId);
-    
+
     console.log("🔍 Fetching config from PDA:", configPda.toBase58());
-    
-    const config = await program.account.gameConfig.fetch(configPda) as GameConfig;
-    
+
+    const config = (await program.account.gameConfig.fetch(
+      configPda
+    )) as GameConfig;
+
     const configInfo: ConfigInfo = {
       pda: configPda.toBase58(),
       admin: config.admin.toBase58(),
@@ -664,17 +745,25 @@ export const getConfigInfo = async (program: Program<Fruitninja>): Promise<Confi
       comboMultiplierBase: config.comboMultiplierBase?.toString(),
       leaderboardCapacity: config.leaderboardCapacity,
       bump: config.bump,
-      leaderboard: config.leaderboard?.map((entry: LeaderboardEntry, index: number): FormattedLeaderboardEntry => ({
-        rank: index + 1,
-        player: entry.player.toBase58(),
-        score: entry.score?.toString(),
-        timestamp: new Date(entry.timestamp.toNumber() * 1000).toISOString()
-      })) || []
+      leaderboard:
+        config.leaderboard?.map(
+          (
+            entry: LeaderboardEntry,
+            index: number
+          ): FormattedLeaderboardEntry => ({
+            rank: index + 1,
+            player: entry.player.toBase58(),
+            score: entry.score?.toString(),
+            timestamp: new Date(
+              entry.timestamp.toNumber() * 1000
+            ).toISOString(),
+          })
+        ) || [],
     };
 
     console.log("⚙️ Game Configuration:", configInfo);
     console.log("🏆 Leaderboard Entries:", configInfo.leaderboard.length);
-    
+
     if (configInfo.leaderboard.length > 0) {
       console.table(configInfo.leaderboard);
     }
@@ -682,25 +771,29 @@ export const getConfigInfo = async (program: Program<Fruitninja>): Promise<Confi
     return configInfo;
   } catch (error) {
     console.error("❌ Error fetching config:", error);
-    
+
     // Try to check if config account exists
     try {
       const [configPda] = getConfigPda(program.programId);
-      const accountInfo = await program.provider.connection.getAccountInfo(configPda);
-      
+      const accountInfo = await program.provider.connection.getAccountInfo(
+        configPda
+      );
+
       if (!accountInfo) {
-        console.log("❌ Config account does not exist. Need to initialize config first.");
+        console.log(
+          "❌ Config account does not exist. Need to initialize config first."
+        );
       } else {
         console.log("✅ Config account exists but failed to deserialize:", {
           pda: configPda.toBase58(),
           owner: accountInfo.owner.toBase58(),
-          dataLength: accountInfo.data.length
+          dataLength: accountInfo.data.length,
         });
       }
     } catch (innerError) {
       console.error("Error checking config account:", innerError);
     }
-    
+
     throw error;
   }
 };
@@ -714,23 +807,28 @@ export const checkSessionDelegated = async (
 ): Promise<boolean> => {
   try {
     const [sessionPda] = getSessionPda(program.programId, playerPublicKey);
-    
+
     // Check if session account exists
-    const accountInfo = await program.provider.connection.getAccountInfo(sessionPda);
+    const accountInfo = await program.provider.connection.getAccountInfo(
+      sessionPda
+    );
     if (!accountInfo) {
-      console.log("❌ No session found for player:", playerPublicKey.toBase58());
+      console.log(
+        "❌ No session found for player:",
+        playerPublicKey.toBase58()
+      );
       return false;
     }
 
     // Check if account owner is different from program ID (indicates delegation)
     const isDelegated = !accountInfo.owner.equals(program.programId);
-    
+
     console.log("🔍 Session delegation check:", {
       player: playerPublicKey.toBase58(),
       sessionPda: sessionPda.toBase58(),
       accountOwner: accountInfo.owner.toBase58(),
       programId: program.programId.toBase58(),
-      isDelegated
+      isDelegated,
     });
 
     return isDelegated;
@@ -752,9 +850,9 @@ export const getDetailedDelegationInfo = async (
     return sessionInfo.delegationInfo;
   } catch (error) {
     console.error("Error getting detailed delegation info:", error);
-    return { 
-      accountExists: false, 
-      error: String(error) 
+    return {
+      accountExists: false,
+      error: String(error),
     };
   }
 };

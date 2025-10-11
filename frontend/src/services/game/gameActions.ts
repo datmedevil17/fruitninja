@@ -31,7 +31,8 @@ export const sliceFruit = async (
     if (!session.isActive) {
       throw new Error("Game session is not active");
     }
-  } catch (error) {
+  } catch (e) {
+    console.log(e)
     throw new Error("No active game session found");
   }
 
