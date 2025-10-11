@@ -1,12 +1,13 @@
 // services.ts
-import { BN, Program } from "@coral-xyz/anchor";
+import { BN, Program, AnchorProvider } from "@coral-xyz/anchor";
 import {
   Connection,
   Keypair,
   PublicKey,
   SystemProgram,
   Transaction,
-  TransactionSignature
+  TransactionSignature,
+sendAndConfirmTransaction
 } from "@solana/web3.js";
 import type { Fruitninja } from "../fruitninja";
 import { OWNER_PROGRAM,DELEGATION_PROGRAM } from "../constants/programs";
@@ -316,7 +317,7 @@ export const loseLife = async (
 
   const [sessionPda] = getSessionPda(program.programId, playerPublicKey);
 
-  // Ensure session exists and active
+  // Ensure session exists and is active
   try {
     const session = await program.account.gameSession.fetch(sessionPda);
     if (!session.isActive) throw new Error("Game session is not active");
@@ -328,8 +329,9 @@ export const loseLife = async (
   const delegated = !!accountInfo && !accountInfo.owner.equals(program.programId);
 
   if (delegated) {
+    // Ephemeral transaction path
     const tempSeed = playerPublicKey.toBytes();
-    const tempKeypair = Keypair.fromSeed(tempSeed);
+    const tempKeypair = Keypair.fromSeed(tempSeed); // Must be 32 bytes
     const ephemeralConnection = new Connection(MAGICBLOCK_RPC, { commitment: "confirmed" });
 
     const tx: Transaction = await program.methods
@@ -339,21 +341,21 @@ export const loseLife = async (
       })
       .transaction();
 
-    const {
-      value: { blockhash, lastValidBlockHeight }
-    } = await ephemeralConnection.getLatestBlockhashAndContext();
-
+    // Fetch latest blockhash right before sending
+    const { blockhash } = await ephemeralConnection.getLatestBlockhash("finalized");
     tx.recentBlockhash = blockhash;
     tx.feePayer = tempKeypair.publicKey;
     tx.sign(tempKeypair);
 
-    const raw = tx.serialize();
-    const signature = await ephemeralConnection.sendRawTransaction(raw, { skipPreflight: true });
-    await ephemeralConnection.confirmTransaction({ blockhash, lastValidBlockHeight, signature }, "confirmed");
+    // Send & confirm transaction safely
+    const signature = await sendAndConfirmTransaction(ephemeralConnection, tx, [tempKeypair], {
+      commitment: "confirmed",
+    });
 
     console.log("✅ Life lost (ephemeral):", signature);
     return signature;
   } else {
+    // Normal wallet transaction path
     const signature = await program.methods
       .loseLife()
       .accountsPartial({
@@ -369,68 +371,126 @@ export const loseLife = async (
 /**
  * endSession: wallet-signed finalize (leaderboard logic)
  */
+/**
+ * undelegateAndEndSession: Properly handle delegated sessions
+ * 
+ * When a session is delegated:
+ * 1. Call undelegateSession() via ephemeral RPC (uses temp keypair)
+ * 2. Poll for account ownership to be restored
+ * 3. Then call endSession() after ownership is confirmed back to your program
+ */
+/**
+ * undelegateAndEndSession: Properly handle delegated sessions
+ * 
+ * When a session is delegated:
+ * 1. Call undelegateSession() to undelegate from ER
+ * 2. Wait for confirmation and account ownership restoration
+ * 3. Then call endSession() via normal wallet transaction
+ */
+/**
+ * undelegateAndEndSession: Properly handle delegated sessions
+ * 
+ * CRITICAL: When delegated, the session is owned by DELEGATION_PROGRAM.
+ * You MUST undelegate via ER connection FIRST, then end via base connection.
+ */
 export const undelegateAndEndSession = async (
   program: Program<Fruitninja>,
   playerPublicKey: PublicKey
 ) => {
   if (!program.provider.publicKey) throw new Error("Wallet not connected");
-  
+
   const [sessionPda] = getSessionPda(program.programId, playerPublicKey);
   const [configPda] = getConfigPda(program.programId);
 
-  // Fetch current account info
+  // Fetch current session account
   const sessionInfo = await program.provider.connection.getAccountInfo(sessionPda);
   if (!sessionInfo) throw new Error("Session not initialized");
-  
+
   const delegated = !sessionInfo.owner.equals(program.programId);
 
-  // If delegated, undelegate first using PLAYER's wallet
+  // 🧩 Step 1: If delegated, undelegate using EPHEMERAL RPC (like sample's endParty)
   if (delegated) {
-    console.log("Session is delegated. Undelegating with player wallet...");
+    console.log("Session is delegated. Undelegating via ephemeral connection...");
     
-    // Derive magic context (same as before, but we won't sign with it)
+    // Create ephemeral connection and provider
+    const ephemeralConnection = new Connection(MAGICBLOCK_RPC, { 
+      commitment: "confirmed" 
+    });
+    
+    // Create temp keypair (same as your sliceFruit/loseLife pattern)
     const tempSeed = playerPublicKey.toBytes();
     const tempKeypair = Keypair.fromSeed(tempSeed);
-    const magicContext = tempKeypair.publicKey;
-    const magicProgram = new PublicKey("MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57");
+    
+    // Create ephemeral provider with temp keypair
+    const ephemeralWallet = {
+      publicKey: tempKeypair.publicKey,
+      signTransaction: async (tx: Transaction) => {
+        tx.sign(tempKeypair);
+        return tx;
+      },
+      signAllTransactions: async (txs: Transaction[]) => {
+        txs.forEach(tx => tx.sign(tempKeypair));
+        return txs;
+      },
+    };
+    
+    const ephemeralProvider = new AnchorProvider(
+      ephemeralConnection,
+      ephemeralWallet as any,
+      AnchorProvider.defaultOptions()
+    );
+    
+    // Create program instance using ephemeral provider
+    const ephemeralProgram = new Program<Fruitninja>(
+  program.idl as any,
+  ephemeralProvider
+);
+    
+    // Use the correct Magic addresses
+    const magicProgram = new PublicKey("Magic11111111111111111111111111111111111111");
+    const magicContext = new PublicKey("MagicContext1111111111111111111111111111111");
 
-    // Use PLAYER's wallet to undelegate (not ephemeral)
-    const undelegateTx = await program.methods
+    console.log(`[undelegateSession] Undelegating session (waiting for confirmation)...`);
+    
+    // Undelegate using ephemeral program with confirmed commitment
+    const undelegateSignature = await ephemeralProgram.methods
       .undelegateSession()
       .accountsPartial({
-        payer: playerPublicKey, // ✅ FIXED: Use playerPublicKey instead of provider.publicKey
+        payer: tempKeypair.publicKey,
         session: sessionPda,
-        magicContext,
-        magicProgram,
+        magicContext: magicContext,
+        magicProgram: magicProgram
       })
       .rpc({ commitment: "confirmed" });
+
+    console.log("✅ Session undelegated:", undelegateSignature);
     
-    console.log("✅ Session undelegated (wallet-signed):", undelegateTx);
-    
-    // Wait a moment for state to settle
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Wait for undelegation to complete and ownership to restore
+    console.log(`[undelegateSession] Waiting for ownership to restore...`);
+    await new Promise(resolve => setTimeout(resolve, 3000));
   }
 
-  // Now ownership is back to your program — safe to call endSession
-  const playerProfilePda = PublicKey.findProgramAddressSync(
+  // 🧩 Step 2: End session via normal provider (wallet-signed) using BASE program
+  const [playerProfilePda] = PublicKey.findProgramAddressSync(
     [Buffer.from("player-profile"), playerPublicKey.toBuffer()],
     program.programId
-  )[0];
+  );
 
-  const txSig = await program.methods.endSession()
-    .accounts({
+  console.log(`[endSession] Closing session (waiting for confirmation)...`);
+  
+  const txSigEnd = await program.methods
+    .endSession()
+    .accountsPartial({
       session: sessionPda,
-      player_profile: playerProfilePda,
+      playerProfile: playerProfilePda,
       config: configPda,
-      player: playerPublicKey, // ✅ FIXED: Use playerPublicKey instead of provider.publicKey
+      player: program.provider.publicKey,
     })
     .rpc({ commitment: "confirmed" });
 
-  console.log("✅ Session ended successfully:", txSig);
-  return txSig;
+  console.log("✅ Session ended successfully:", txSigEnd);
+  return txSigEnd;
 };
-
-
 
 
 
